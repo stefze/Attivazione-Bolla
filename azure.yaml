@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: bolla-dr-replication
+
+# azd does not support PowerShell language packaging for Azure Functions.
+# Infrastructure is provisioned via `azd provision`.
+# Function code is deployed via the postprovision hook using az functionapp deployment.
+
+hooks:
+  postprovision:
+    shell: pwsh
+    run: |
+      Set-Location ./DRReplication
+      func azure functionapp publish $env:AZURE_FUNCTION_NAME --powershell
+
+services: {}
+
