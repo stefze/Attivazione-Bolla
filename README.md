@@ -466,6 +466,93 @@ $resp | ConvertTo-Json -Depth 3
 
 ---
 
+## Checking DR Status
+
+### Get-DRStatus Function
+
+The `Get-DRStatus` function checks the status of the most recent DR replication for each VM in a CSV. It reads the per-stage logs from the `dr-logs` container and reports whether each VM succeeded, failed, or is still in progress.
+
+### Request
+
+```
+GET/POST https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?code=<FUNCTION_KEY>
+Content-Type: application/json
+
+{
+  "csvBlobPath": "configurations/prod.csv"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `csvBlobPath` | Yes | Same CSV path used for `Invoke-DRReplication` |
+
+### Response body (example)
+
+```json
+{
+  "checkedAt": "2026-05-17T20:55:00.000Z",
+  "vmCount": 2,
+  "results": [
+    {
+      "vmName": "vm-wsfc-n1",
+      "status": "SUCCEEDED",
+      "invocationId": "8faadceb-fd98-4c72-ad79-a040faae3ed5",
+      "completedStage": "Stage-E"
+    },
+    {
+      "vmName": "vm-wsfc-n2",
+      "status": "FAILED",
+      "invocationId": "8faadceb-fd98-4c72-ad79-a040faae3ed5",
+      "failedStage": "Stage-B"
+    }
+  ],
+  "summary": {
+    "succeeded": 1,
+    "failed": 1,
+    "inProgress": 0,
+    "unknown": 0,
+    "error": 0
+  }
+}
+```
+
+### Status values
+
+| Status | Meaning |
+|--------|---------|
+| `SUCCEEDED` | Stage E (Load Balancer attachment) completed successfully |
+| `FAILED` | Replication failed at a specific stage (reported in `failedStage`) |
+| `IN_PROGRESS` | Replication started but Stage E not yet completed |
+| `UNKNOWN` | No logs found for this VM |
+| `ERROR` | Error reading logs for this VM |
+
+### PowerShell example
+
+```powershell
+$uri  = "https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?code=<KEY>"
+$body = '{"csvBlobPath":"configurations/prod.csv"}'
+$resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType "application/json" -Body $body
+
+Write-Host "`nSummary:"
+Write-Host "  Succeeded: $($resp.summary.succeeded)"
+Write-Host "  Failed: $($resp.summary.failed)"
+Write-Host "  In Progress: $($resp.summary.inProgress)"
+
+Write-Host "`nDetails:"
+foreach ($vm in $resp.results) {
+    if ($vm.status -eq 'SUCCEEDED') {
+        Write-Host "  $($vm.vmName): SUCCEEDED" -ForegroundColor Green
+    } elseif ($vm.status -eq 'FAILED') {
+        Write-Host "  $($vm.vmName): FAILED at $($vm.failedStage)" -ForegroundColor Red
+    } else {
+        Write-Host "  $($vm.vmName): $($vm.status)"
+    }
+}
+```
+
+---
+
 ## Local Development
 
 1. Install [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite) for local storage emulation.

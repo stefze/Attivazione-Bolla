@@ -338,6 +338,9 @@ function Invoke-VMReplication {
     }
 
     try {
+        # Track current stage for error reporting
+        $currentStage = 'Initialization'
+        
         # ── Resolve subscriptions ───────────────────────────────────────────────
         Write-Log "Resolving subscriptions." -VmName $SourceVmName
 
@@ -352,6 +355,7 @@ function Invoke-VMReplication {
         $targetSnapDiskRg = $targetVmRg
 
         # ── Stage A: Discover source VM configuration ───────────────────────────
+        $currentStage = 'A'
         Write-Log 'Stage A: Discovering source VM configuration.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $sourceSub.Id -FriendlyName $sourceSub.Name
 
@@ -546,6 +550,7 @@ function Invoke-VMReplication {
                    "TargetVNet='$targetVnetName' | TargetDES='$targetDesName'") -VmName $SourceVmName
 
         # ── Stage B: Create DES-encrypted snapshots in target subscription (parallel) ──
+        $currentStage = 'B'
         Write-Log 'Stage B: Creating/reusing encrypted snapshots in target subscription.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
@@ -648,6 +653,7 @@ function Invoke-VMReplication {
         $script:LogBuffer = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
 
         # ── Stage C: Create managed disks from snapshots ────────────────────────
+        $currentStage = 'C'
         Write-Log 'Stage C: Creating/reusing managed disks.' -VmName $SourceVmName
 
         $supportsTier                       = (Get-Command New-AzDiskConfig).Parameters.ContainsKey('Tier')
@@ -704,6 +710,7 @@ function Invoke-VMReplication {
         $script:LogBuffer = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
 
         # ── Stage D: Create target NIC + VM ─────────────────────────────────────
+        $currentStage = 'D'
         Write-Log 'Stage D: Creating/reusing NIC and VM.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
@@ -838,6 +845,7 @@ function Invoke-VMReplication {
 
         # ── Stage E: Attach NIC to LB backend pool (skip if source has no LB) ───
         if (-not [string]::IsNullOrWhiteSpace($srcLbName)) {
+            $currentStage = 'E'
             Write-Log 'Stage E: Attaching NIC to load balancer backend pool.' -VmName $SourceVmName
             Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
@@ -915,7 +923,7 @@ function Invoke-VMReplication {
         $result.LogEntries = @($script:LogBuffer)
 
         # Upload failed stage log
-        Upload-StageLog -VmName $SourceVmName -StageId 'X' -StageDescription 'Failed' -Failed $true `
+        Upload-StageLog -VmName $SourceVmName -StageId $currentStage -StageDescription 'Failed' -Failed $true `
             -LogStorageAccountName $LogStorageAccountName -LogContainerName $LogContainerName -InvocationId $InvocationId
     }
 
