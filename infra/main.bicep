@@ -37,7 +37,125 @@ var storageBlobDataOwnerRoleId        = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
-var storageBlobDataReaderRoleId       = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+
+// VNet and subnet names
+var vnetName                    = 'vnet-${prefix}-${resourceToken}'
+var vnetIntegrationSubnetName   = 'snet-vnetintegration'
+var privateEndpointSubnetName   = 'snet-privateendpoints'
+
+// Private DNS Zone names
+var privateDnsZoneBlobName  = 'privatelink.blob.${environment().suffixes.storage}'
+var privateDnsZoneTableName = 'privatelink.table.${environment().suffixes.storage}'
+var privateDnsZoneQueueName = 'privatelink.queue.${environment().suffixes.storage}'
+var privateDnsZoneFileName  = 'privatelink.file.${environment().suffixes.storage}'
+
+// ---------------------------------------------------------------------------
+// Virtual Network
+// ---------------------------------------------------------------------------
+
+resource vnet 'Microsoft.Network/virtualNetworks@2023-11-01' = {
+  name:     vnetName
+  location: location
+  tags:     tags
+  properties: {
+    addressSpace: {
+      addressPrefixes: [ '10.0.0.0/24' ]
+    }
+    subnets: [
+      {
+        name: vnetIntegrationSubnetName
+        properties: {
+          addressPrefix: '10.0.0.0/26'
+          delegations: [
+            {
+              name: 'delegation'
+              properties: {
+                serviceName: 'Microsoft.Web/serverFarms'
+              }
+            }
+          ]
+          serviceEndpoints: []
+          privateEndpointNetworkPolicies: 'Enabled'
+        }
+      }
+      {
+        name: privateEndpointSubnetName
+        properties: {
+          addressPrefix: '10.0.0.64/26'
+          privateEndpointNetworkPolicies: 'Disabled'
+        }
+      }
+    ]
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private DNS Zones
+// ---------------------------------------------------------------------------
+
+resource privateDnsZoneBlob 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name:     privateDnsZoneBlobName
+  location: 'global'
+  tags:     tags
+}
+
+resource privateDnsZoneBlobVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent:   privateDnsZoneBlob
+  name:     '${vnetName}-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork:      { id: vnet.id }
+  }
+}
+
+resource privateDnsZoneTable 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name:     privateDnsZoneTableName
+  location: 'global'
+  tags:     tags
+}
+
+resource privateDnsZoneTableVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent:   privateDnsZoneTable
+  name:     '${vnetName}-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork:      { id: vnet.id }
+  }
+}
+
+resource privateDnsZoneQueue 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name:     privateDnsZoneQueueName
+  location: 'global'
+  tags:     tags
+}
+
+resource privateDnsZoneQueueVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent:   privateDnsZoneQueue
+  name:     '${vnetName}-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork:      { id: vnet.id }
+  }
+}
+
+resource privateDnsZoneFile 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+  name:     privateDnsZoneFileName
+  location: 'global'
+  tags:     tags
+}
+
+resource privateDnsZoneFileVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent:   privateDnsZoneFile
+  name:     '${vnetName}-link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork:      { id: vnet.id }
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Log Analytics
@@ -85,7 +203,13 @@ resource storageFunc 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     allowSharedKeyAccess:     false
     minimumTlsVersion:        'TLS1_2'
     supportsHttpsTrafficOnly: true
-    networkAcls: { defaultAction: 'Allow', bypass: 'AzureServices' }
+    publicNetworkAccess:      'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass:        'None'
+      virtualNetworkRules: []
+      ipRules: []
+    }
   }
 }
 
@@ -115,7 +239,13 @@ resource storageConfig 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     allowSharedKeyAccess:     false
     minimumTlsVersion:        'TLS1_2'
     supportsHttpsTrafficOnly: true
-    networkAcls: { defaultAction: 'Allow', bypass: 'AzureServices' }
+    publicNetworkAccess:      'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass:        'None'
+      virtualNetworkRules: []
+      ipRules: []
+    }
   }
 }
 
@@ -134,6 +264,189 @@ resource logContainer 'Microsoft.Storage/storageAccounts/blobServices/containers
   parent: storageConfigBlobSvc
   name:   logContainerName
   properties: { publicAccess: 'None' }
+}
+
+// ---------------------------------------------------------------------------
+// Private Endpoints — Function Hosting Storage
+// ---------------------------------------------------------------------------
+
+resource privateEndpointFuncBlob 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name:     'pe-${storageFuncName}-blob'
+  location: location
+  tags:     tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-connection'
+        properties: {
+          privateLinkServiceId: storageFunc.id
+          groupIds:             [ 'blob' ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncBlobDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: privateEndpointFuncBlob
+  name:   'dnsgroupname'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name:              'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneBlob.id
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncTable 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name:     'pe-${storageFuncName}-table'
+  location: location
+  tags:     tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-connection'
+        properties: {
+          privateLinkServiceId: storageFunc.id
+          groupIds:             [ 'table' ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncTableDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: privateEndpointFuncTable
+  name:   'dnsgroupname'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name:              'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneTable.id
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncQueue 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name:     'pe-${storageFuncName}-queue'
+  location: location
+  tags:     tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-connection'
+        properties: {
+          privateLinkServiceId: storageFunc.id
+          groupIds:             [ 'queue' ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncQueueDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: privateEndpointFuncQueue
+  name:   'dnsgroupname'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name:              'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneQueue.id
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncFile 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name:     'pe-${storageFuncName}-file'
+  location: location
+  tags:     tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-connection'
+        properties: {
+          privateLinkServiceId: storageFunc.id
+          groupIds:             [ 'file' ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointFuncFileDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: privateEndpointFuncFile
+  name:   'dnsgroupname'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name:              'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneFile.id
+        }
+      }
+    ]
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private Endpoints — Config Storage
+// ---------------------------------------------------------------------------
+
+resource privateEndpointConfigBlob 'Microsoft.Network/privateEndpoints@2023-11-01' = {
+  name:     'pe-${storageConfigName}-blob'
+  location: location
+  tags:     tags
+  properties: {
+    subnet: {
+      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'pe-connection'
+        properties: {
+          privateLinkServiceId: storageConfig.id
+          groupIds:             [ 'blob' ]
+        }
+      }
+    ]
+  }
+}
+
+resource privateEndpointConfigBlobDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
+  parent: privateEndpointConfigBlob
+  name:   'dnsgroupname'
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name:              'config'
+        properties: {
+          privateDnsZoneId: privateDnsZoneBlob.id
+        }
+      }
+    ]
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +477,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   kind:     'functionapp,linux'
   identity: { type: 'SystemAssigned' }
   properties: {
-    serverFarmId: appServicePlan.id
+    serverFarmId:             appServicePlan.id
+    virtualNetworkSubnetId:   '${vnet.id}/subnets/${vnetIntegrationSubnetName}'
+    vnetRouteAllEnabled:      true
+    vnetContentShareEnabled:  false
     functionAppConfig: {
       deployment: {
         storage: {
@@ -209,7 +525,14 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       ]
     }
   }
-  dependsOn: [ deploymentContainer ]
+  dependsOn: [
+    deploymentContainer
+    privateEndpointFuncBlob
+    privateEndpointFuncTable
+    privateEndpointFuncQueue
+    privateEndpointFuncFile
+    privateEndpointConfigBlob
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +601,10 @@ output AZURE_LOCATION                        string = location
 output AZURE_TENANT_ID                       string = tenant().tenantId
 output AZURE_FUNCTION_NAME                   string = functionApp.name
 output AZURE_FUNCTION_PRINCIPAL_ID           string = functionApp.identity.principalId
+output AZURE_VNET_NAME                       string = vnet.name
+output AZURE_VNET_ID                         string = vnet.id
+output AZURE_STORAGE_FUNC_NAME               string = storageFunc.name
+output AZURE_STORAGE_CONFIG_NAME             string = storageConfig.name
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = appInsights.properties.ConnectionString
 output CSV_STORAGE_ACCOUNT_NAME              string = storageConfig.name
 output CSV_STORAGE_BLOB_ENDPOINT             string = storageConfig.properties.primaryEndpoints.blob

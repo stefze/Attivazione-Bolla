@@ -44,6 +44,22 @@ Invoke-DRReplication (Azure Function — FC1/Linux)
 
 ---
 
+## Network Security Architecture
+
+The solution implements a **fully private network architecture** with:
+
+- **Virtual Network** (10.0.0.0/24) with two subnets:
+  - VNet Integration subnet for Function App connectivity
+  - Private Endpoints subnet for storage access
+- **Private Endpoints** for all storage accounts (blob, table, queue, file)
+- **Private DNS Zones** for automatic DNS resolution to private IPs
+- **Network Isolation**: Storage accounts have `publicNetworkAccess: Disabled`
+- **Zero Trust**: Only the Function App with Managed Identity can access storage via private network
+
+📖 **Detailed documentation**: See [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md)
+
+---
+
 ## Replication Stages
 
 | Stage | Actions |
@@ -372,6 +388,10 @@ azd auth login
 azd provision --no-prompt
 ```
 
+This creates the resource group, VNet, Private Endpoints, Private DNS Zones, storage accounts, app service plan, and function app. It also configures all application settings and RBAC for the function hosting storage.
+
+> **⏱️ Note**: The first deployment with private networking may take **5-10 minutes** due to Private Endpoint and DNS propagation. If the Function App reports connectivity issues immediately after deployment, wait 2-3 minutes and the connection will stabilize automatically.
+
 This creates the resource group, storage accounts, app service plan, and function app. It also configures all application settings and RBAC for the function hosting storage.
 
 ### Step 3 — Publish function code
@@ -521,9 +541,9 @@ Content-Type: application/json
 
 | Status | Meaning |
 |--------|---------|
-| `SUCCEEDED` | Stage E (Load Balancer attachment) completed successfully |
+| `SUCCEEDED` | All stages completed successfully (completion marker found in logs) |
 | `FAILED` | Replication failed at a specific stage (reported in `failedStage`) |
-| `IN_PROGRESS` | Replication started but Stage E not yet completed |
+| `IN_PROGRESS` | Replication started but not yet completed |
 | `UNKNOWN` | No logs found for this VM |
 | `ERROR` | Error reading logs for this VM |
 

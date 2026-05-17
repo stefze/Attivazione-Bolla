@@ -899,6 +899,11 @@ function Invoke-VMReplication {
 
         # ── Completed ────────────────────────────────────────────────────────────
         Write-Log 'Replication completed successfully.' -VmName $SourceVmName
+        
+        # Upload completion marker log
+        Upload-StageLog -VmName $SourceVmName -StageId 'Completed' -StageDescription 'Success' -Failed $false `
+            -LogStorageAccountName $LogStorageAccountName -LogContainerName $LogContainerName -InvocationId $InvocationId
+        
         $result.Status  = 'Succeeded'
         $result.Summary = [ordered]@{
             SnapshotsCreated         = @($summary.SnapshotsCreated)

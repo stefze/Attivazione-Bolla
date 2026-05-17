@@ -140,18 +140,18 @@ try {
             
             Write-StatusLog "Latest invocation for $vmName : $invocationId"
 
-            # Check if Stage E completed successfully
-            $stageESuccess = $logBlobs | Where-Object { 
-                $_ -match "stage-E-" -and $_ -notmatch "-failed\.log$" 
+            # Check if replication completed successfully (completion marker log exists)
+            $completionMarker = $logBlobs | Where-Object { 
+                $_ -match "stage-Completed-" -and $_ -notmatch "-failed\.log$" 
             }
 
-            if ($stageESuccess) {
-                Write-StatusLog "VM $vmName : SUCCEEDED (Stage E completed)"
+            if ($completionMarker) {
+                Write-StatusLog "VM $vmName : SUCCEEDED (Completion marker found)"
                 $results += @{
                     vmName = $vmName
                     status = 'SUCCEEDED'
                     invocationId = $invocationId
-                    completedStage = 'Stage-E'
+                    completedStage = 'Completed'
                 }
             } else {
                 # Find which stage failed
@@ -180,8 +180,8 @@ try {
                         }
                     }
                 } else {
-                    # No failed stage found, but Stage E not completed either
-                    Write-StatusLog "VM $vmName : IN_PROGRESS (Stage E not yet completed)"
+                    # No failed stage found, but completion marker not found either
+                    Write-StatusLog "VM $vmName : IN_PROGRESS (Completion marker not found)"
                     
                     # Find the highest stage completed
                     $completedStages = $logBlobs | Where-Object { 
