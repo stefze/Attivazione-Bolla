@@ -14,7 +14,10 @@ try {
     # Extract CSV blob path from request
     $csvBlobPath = $null
     if ($Request.Method -eq 'POST') {
-        $body = $Request.Body | ConvertFrom-Json -ErrorAction SilentlyContinue
+        $body = $Request.Body
+        if ($body -is [string] -and -not [string]::IsNullOrWhiteSpace($body)) {
+            $body = $body | ConvertFrom-Json -ErrorAction Stop
+        }
         $csvBlobPath = $body.csvBlobPath
     } elseif ($Request.Method -eq 'GET') {
         $csvBlobPath = $Request.Query.csvBlobPath
