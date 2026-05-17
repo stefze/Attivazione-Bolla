@@ -126,14 +126,30 @@ This covers both reading the CSV (`dr-configs`) and writing per-VM logs (`dr-log
 
 The managed identity must be granted roles on the subscriptions/resource groups it operates on at runtime. Minimum recommended grants:
 
-| Role | Scope |
-|------|-------|
-| Reader | Source subscription or source RG |
-| Contributor | Target VM resource group |
-| Contributor | Target snapshot/disk resource group (same as VM RG) |
-| Network Contributor | Target VNet resource group |
-| Reader | Target DES resource group |
-| Reader | Target LB resource group |
+| Role | Scope | Why |
+|------|-------|-----|
+| **Disk Backup Reader** | Source subscription or source RG | Required for cross-subscription snapshot creation. Includes `Microsoft.Compute/disks/beginGetAccess/action` to get SAS URLs from source disks. **Reader role is insufficient.** |
+| Contributor | Target VM resource group | Create/update VMs, NICs, disks |
+| Contributor | Target snapshot/disk resource group (same as VM RG) | Create snapshots and managed disks |
+| Network Contributor | Target VNet resource group | Attach NICs to VNet/subnet |
+| Reader | Target DES resource group | Read Disk Encryption Set for encrypted snapshots |
+| Reader | Target LB resource group | Read Load Balancer configuration |
+
+**Example: Grant Disk Backup Reader on source subscription**
+
+```bash
+# Get function's managed identity principal ID
+$principalId = az functionapp identity show `
+  --name func-bolla-i43yiicd2xaxg `
+  --resource-group rg-bolla-dr-prod `
+  --query principalId -o tsv
+
+# Assign Disk Backup Reader on source subscription
+az role assignment create `
+  --assignee $principalId `
+  --role "Disk Backup Reader" `
+  --scope /subscriptions/bb410b24-2061-4149-87f6-2545ee91a84c
+```
 
 ---
 
@@ -473,7 +489,8 @@ $resp | ConvertTo-Json -Depth 3
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
 | Function crashes on startup | `managedDependency.enabled: true` in host.json | Set to `false`; run `setup-modules.ps1` to bundle modules |
-| `AuthorizationFailed` | Managed identity lacks RBAC on source/target resource | Grant Reader (source) and Contributor (target) — see RBAC section |
+| `LinkedAuthorizationFailed` / `Microsoft.Compute/disks/beginGetAccess/action` | Managed identity has only Reader on source | Grant **Disk Backup Reader** on source subscription — see RBAC section |
+| `AuthorizationFailed` | Managed identity lacks RBAC on source/target resource | Grant Disk Backup Reader (source) and Contributor (target) — see RBAC section |
 | `Subscription 'X' not found` | MI cannot see the subscription | Add MI as Reader at subscription scope |
 | `Could not determine source load balancer name` | Source NIC has no LB backend pool associations | Ensure source NIC is attached to an LB backend pool |
 | LB not found in target RG | LB name or RG suffix mismatch | Check `TARGET_LB_NAME_SUFFIX` and `TARGET_LB_RG_SUFFIX` |
