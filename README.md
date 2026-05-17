@@ -479,13 +479,13 @@ GET/POST https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?cod
 Content-Type: application/json
 
 {
-  "csvBlobPath": "configurations/prod.csv"
+  "csvBlobPath": "prod/production-config.csv"
 }
 ```
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `csvBlobPath` | Yes | Same CSV path used for `Invoke-DRReplication` |
+| `csvBlobPath` | Yes | Path within the `dr-configs` container (same as used for `Invoke-DRReplication`) |
 
 ### Response body (example)
 
@@ -531,7 +531,7 @@ Content-Type: application/json
 
 ```powershell
 $uri  = "https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?code=<KEY>"
-$body = '{"csvBlobPath":"configurations/prod.csv"}'
+$body = '{"csvBlobPath":"prod/production-config.csv"}'
 $resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType "application/json" -Body $body
 
 Write-Host "`nSummary:"

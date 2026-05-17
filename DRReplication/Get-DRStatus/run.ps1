@@ -36,6 +36,7 @@ try {
 
     # Read environment variables
     $csvStorageUri = $env:CSV_STORAGE_CONNECTION__blobServiceUri
+    $csvContainerName = [string]($env:CSV_CONTAINER_NAME ?? 'dr-configs')
     $logContainerName = [string]($env:LOG_CONTAINER_NAME ?? 'dr-logs')
     
     if ([string]::IsNullOrWhiteSpace($csvStorageUri)) {
@@ -55,17 +56,15 @@ try {
 
     # Parse storage account name from URI
     $storageAccountName = ([uri]$csvStorageUri).Host -replace '\.blob\.core\.windows\.net$', ''
-    Write-StatusLog "Storage account: $storageAccountName"
+    Write-StatusLog "Storage account: $storageAccountName, Container: $csvContainerName"
 
     # Download CSV
-    Write-StatusLog "Downloading CSV: $csvBlobPath"
-    $csvContainerName = ($csvBlobPath -split '/', 2)[0]
-    $csvBlobName = ($csvBlobPath -split '/', 2)[1]
+    Write-StatusLog "Downloading CSV: $csvBlobPath from container $csvContainerName"
     
     $ctx = New-AzStorageContext -StorageAccountName $storageAccountName -UseConnectedAccount -ErrorAction Stop
     $tempCsvFile = [System.IO.Path]::Combine($env:TEMP, "status-check-$([guid]::NewGuid()).csv")
     
-    Get-AzStorageBlobContent -Container $csvContainerName -Blob $csvBlobName `
+    Get-AzStorageBlobContent -Container $csvContainerName -Blob $csvBlobPath `
         -Destination $tempCsvFile -Context $ctx -Force -ErrorAction Stop | Out-Null
     
     # Parse CSV
