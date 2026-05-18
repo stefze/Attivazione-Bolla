@@ -47,9 +47,25 @@ $resp = Invoke-RestMethod -Uri $functionUrl -Method POST -ContentType "applicati
 $resp | ConvertTo-Json
 ```
 
-## Check VM Status
+## Check Replication Status
 
 ```powershell
-# Get status for specific VM
+# Single status query (formatted display)
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl
+
+# Watch mode - continuous polling every 30 seconds
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -Watch
+
+# Watch mode with custom interval (every 10 seconds)
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -Watch -WatchInterval 10
+```
+
+## Manual Status Check
+
+```powershell
+# Get status via REST API
+Invoke-RestMethod -Uri $statusUrl | ConvertTo-Json
+
+# Get status for specific VM (deprecated, use Get-DRStatus.ps1)
 Invoke-RestMethod -Uri "$statusUrl&vmName=PRDDC001" | ConvertTo-Json
 ```
