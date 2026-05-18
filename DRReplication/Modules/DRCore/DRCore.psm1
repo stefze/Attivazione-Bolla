@@ -606,10 +606,16 @@ function Invoke-VMReplication {
                 Disable-AzContextAutosave -Scope Process | Out-Null
                 Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
             }
-            Set-AzContext -SubscriptionId $tSubId -ErrorAction Stop | Out-Null
+            
+            # Set and verify target subscription context
+            $null = Set-AzContext -SubscriptionId $tSubId -ErrorAction Stop
+            $currentContext = Get-AzContext
+            if ($currentContext.Subscription.Id -ne $tSubId) {
+                throw "Failed to switch to target subscription. Expected: $tSubId, Current: $($currentContext.Subscription.Id)"
+            }
 
             $snapName = "$snapPrefix$($disk.Name)"
-            $existing = Get-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -ErrorAction SilentlyContinue
+            $existing = Get-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -SubscriptionId $tSubId -ErrorAction SilentlyContinue
             if ($existing) {
                 $ok = (_norm $existing.CreationData.SourceResourceId) -eq (_norm $disk.SourceDiskId) -and
                       (_norm $existing.Encryption.DiskEncryptionSetId) -eq (_norm $tDesId)          -and
@@ -627,7 +633,7 @@ function Invoke-VMReplication {
             if ($disk.Zones -and $disk.Zones.Count -gt 0) { $cfgArgs['Zone'] = @($disk.Zones) }
 
             $cfg     = _retry -op "New-AzSnapshotConfig $snapName" -sb { New-AzSnapshotConfig @cfgArgs -ErrorAction Stop }
-            $newSnap = _retry -op "New-AzSnapshot $snapName"       -sb { New-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -Snapshot $cfg -ErrorAction Stop }
+            $newSnap = _retry -op "New-AzSnapshot $snapName"       -sb { New-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -Snapshot $cfg -SubscriptionId $tSubId -ErrorAction Stop }
 
             [pscustomobject]@{ DiskName = $disk.Name; SnapshotName = $snapName; SnapshotId = $newSnap.Id; Status = 'Created' }
         }
@@ -666,7 +672,7 @@ function Invoke-VMReplication {
             $snapshot = $snapshotByDiskName[$disk.Name]
             if ($null -eq $snapshot) { throw "Snapshot object not found for disk '$($disk.Name)'." }
 
-            $existingDisk = Get-AzDisk -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -ErrorAction SilentlyContinue
+            $existingDisk = Get-AzDisk -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -SubscriptionId $targetSub.Id -ErrorAction SilentlyContinue
             if ($existingDisk) {
                 $ok = (Normalize $existingDisk.CreationData.SourceResourceId) -eq (Normalize $snapshot.Id) -and
                       (Normalize $existingDisk.Sku.Name)  -eq (Normalize $disk.SkuName) -and
@@ -697,7 +703,7 @@ function Invoke-VMReplication {
 
             $diskConfig = Invoke-WithRetry -Operation "New-AzDiskConfig $($disk.Name)" -ScriptBlock { New-AzDiskConfig @cfgArgs -ErrorAction Stop }
             $newDisk    = Invoke-WithRetry -Operation "New-AzDisk $($disk.Name)" -ScriptBlock {
-                New-AzDisk -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -Disk $diskConfig -ErrorAction Stop
+                New-AzDisk -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -Disk $diskConfig -SubscriptionId $targetSub.Id -ErrorAction Stop
             }
             $targetDisksByName[$disk.Name] = $newDisk
             [void]$summary.DisksCreated.Add($disk.Name)
@@ -747,7 +753,7 @@ function Invoke-VMReplication {
         }
 
         # NIC
-        $targetNic = Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -ErrorAction SilentlyContinue
+        $targetNic = Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -SubscriptionId $targetSub.Id -ErrorAction SilentlyContinue
         if ($null -eq $targetNic) {
             $ipCfgArgs = @{
                 Name     = $srcIpCfgName
@@ -764,7 +770,7 @@ function Invoke-VMReplication {
             $ipCfg = New-AzNetworkInterfaceIpConfig @ipCfgArgs -ErrorAction Stop
             $targetNic = Invoke-WithRetry -Operation "New-AzNetworkInterface $targetNicName" -ScriptBlock {
                 New-AzNetworkInterface -ResourceGroupName $targetVmRg -Location $targetLocation `
-                    -Name $targetNicName -IpConfiguration $ipCfg -Tag $targetVmTags -ErrorAction Stop
+                    -Name $targetNicName -IpConfiguration $ipCfg -Tag $targetVmTags -SubscriptionId $targetSub.Id -ErrorAction Stop
             }
             [void]$summary.NicsCreated.Add($targetNicName)
             $asgNote = if ($targetAsgIds.Count -gt 0) { " with $($targetAsgIds.Count) ASG(s)" } else { '' }
@@ -799,7 +805,7 @@ function Invoke-VMReplication {
         $targetOsDisk = $targetDisksByName[$osDiskInfo.Name]
         if ($null -eq $targetOsDisk) { throw "Target OS disk '$($osDiskInfo.Name)' not found in target disk map." }
 
-        $existingVm = Get-AzVM -ResourceGroupName $targetVmRg -Name $targetVmName -ErrorAction SilentlyContinue
+        $existingVm = Get-AzVM -ResourceGroupName $targetVmRg -Name $targetVmName -SubscriptionId $targetSub.Id -ErrorAction SilentlyContinue
         if ($existingVm) {
             if ((Normalize $existingVm.HardwareProfile.VmSize) -ne (Normalize $sourceVm.HardwareProfile.VmSize)) {
                 throw "Existing VM '$targetVmName' size mismatch (existing='$($existingVm.HardwareProfile.VmSize)' expected='$($sourceVm.HardwareProfile.VmSize)')."
@@ -831,7 +837,7 @@ function Invoke-VMReplication {
 
             Invoke-WithRetry -Operation "New-AzVM $targetVmName" -ScriptBlock {
                 New-AzVM -ResourceGroupName $targetVmRg -Location $targetLocation `
-                    -VM $vmConfig -Tag $targetVmTags -ErrorAction Stop | Out-Null
+                    -VM $vmConfig -Tag $targetVmTags -SubscriptionId $targetSub.Id -ErrorAction Stop | Out-Null
             } | Out-Null
 
             [void]$summary.VmsCreated.Add($targetVmName)
@@ -850,14 +856,14 @@ function Invoke-VMReplication {
             Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
             $lb = Invoke-WithRetry -Operation "Get-AzLoadBalancer $targetLbName" -ScriptBlock {
-                Get-AzLoadBalancer -ResourceGroupName $targetLbRg -Name $targetLbName -ErrorAction Stop
+                Get-AzLoadBalancer -ResourceGroupName $targetLbRg -Name $targetLbName -SubscriptionId $targetSub.Id -ErrorAction Stop
             }
             $pool = Select-BackendPool -LoadBalancer $lb -SourcePoolNames $srcBackendPoolNames -PoolNameOverride $BackendPoolNameOverride
             Write-Log "Selected backend pool '$($pool.Name)'." -VmName $SourceVmName
 
             # Refresh NIC after VM creation
             $targetNic = Invoke-WithRetry -Operation "Refresh NIC $targetNicName" -ScriptBlock {
-                Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -ErrorAction Stop
+                Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -SubscriptionId $targetSub.Id -ErrorAction Stop
             }
             $nicIpCfgForLb = $targetNic.IpConfigurations | Where-Object { $_.Name -eq $srcIpCfgName } | Select-Object -First 1
             if ($null -eq $nicIpCfgForLb) { $nicIpCfgForLb = $targetNic.IpConfigurations | Select-Object -First 1 }
@@ -879,7 +885,7 @@ function Invoke-VMReplication {
                 } | Out-Null
 
                 # Verify
-                $verifyNic    = Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -ErrorAction Stop
+                $verifyNic    = Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -SubscriptionId $targetSub.Id -ErrorAction Stop
                 $verifyIpCfg  = $verifyNic.IpConfigurations | Where-Object { $_.Name -eq $nicIpCfgForLb.Name } | Select-Object -First 1
                 $verifyPoolIds = @($verifyIpCfg.LoadBalancerBackendAddressPools | ForEach-Object { Normalize $_.Id })
                 if (-not ($verifyPoolIds -contains (Normalize $pool.Id))) {
