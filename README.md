@@ -424,11 +424,25 @@ After infrastructure deployment completes, **upload the function code via Azure 
    az role assignment create --assignee $identity --role Contributor --subscription <TARGET_SUB_ID>
    ```
 
-#### Manual Code Deployment (Alternative)
+#### Manual Code Deployment via CLI (Alternative)
 
-If you disabled automatic code deployment, run these steps:
-1. Bundle Az modules: `.\setup-modules.ps1`
-2. Publish function code: `cd DRReplication; func azure functionapp publish <FUNCTION_APP_NAME> --powershell`
+If you prefer CLI over GUI, use the helper script:
+
+```powershell
+# Download deployment package if not already present
+# https://github.com/stefze/Attivazione-Bolla/raw/main/function-deployment.zip
+
+# Deploy using helper script
+.\deploy-code.ps1 -FunctionAppName "func-bolla-*****" -ResourceGroup "rg-bolla-***"
+```
+
+Or manually with Azure CLI:
+```powershell
+az functionapp deployment source config-zip `
+  --name "func-bolla-*****" `
+  --resource-group "rg-bolla-***" `
+  --src function-deployment.zip
+```
 
 ### Manual Deployment
 
