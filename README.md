@@ -371,17 +371,16 @@ All target resource names are derived at runtime from source names by appending 
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fazuredeploy.json)
 
-Click the button above to deploy **infrastructure and function code** using Azure Portal's guided wizard.
+Click the button above to deploy the infrastructure using Azure Portal's guided wizard.
 
 #### What Gets Deployed
 
-The deployment will automatically:
-- ✅ Create Virtual Network with private networking
-- ✅ Deploy Function App (Flex Consumption, PowerShell 7.4)
-- ✅ Configure Storage accounts with private endpoints
-- ✅ Setup Application Insights and Log Analytics workspace
-- ✅ Assign all necessary RBAC role assignments
-- ✅ **Clone repository and publish function code** (via Azure Deployment Script)
+The deployment will create:
+- ✅ Virtual Network with private networking
+- ✅ Function App (Flex Consumption, PowerShell 7.4)
+- ✅ Storage accounts with private endpoints
+- ✅ Application Insights and Log Analytics workspace
+- ✅ All necessary RBAC role assignments
 
 #### Deployment Parameters
 
@@ -391,33 +390,41 @@ The deployment will automatically:
 | `location` | *Resource Group Location* | Azure region for all resources |
 | `prefix` | `bolla` | Prefix for resource names |
 | `resourceToken` | *Auto-generated* | Unique token (hash of subscription/RG/env) |
-| `autoDeployCode` | `true` | Automatically deploy function code after infrastructure |
-| `deploymentZipUrl` | `https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip` | Direct URL to pre-built deployment package |
 
-> **💡 Tip**: Set `autoDeployCode = false` if you want to deploy code manually later.
-> **🔗 Fork users**: Update `deploymentZipUrl` to point to your forked repository's raw content URL.
+> **📝 Note for maintainers**: If you modify `infra/main.bicep`, recompile to JSON:  
+> `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
 
-> **📝 Note for maintainers**: 
-> - If you modify `infra/main.bicep`, recompile to JSON: `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
-> - If you modify function code in `DRReplication/`, rebuild the deployment package:
->   ```powershell
->   cd DRReplication
->   Compress-Archive -Path * -DestinationPath ..\function-deployment.zip -Force
->   git add ..\function-deployment.zip
->   git commit -m "Update deployment package"
->   git push
->   ```
+#### Post-Deployment: Upload Function Code
 
-#### Post-Deployment
+After infrastructure deployment completes, **upload the function code via Azure Portal GUI**:
 
-After deployment completes (including automated code deployment), you only need to:
-1. **Grant RBAC roles** on source/target subscriptions (if accessing other subscriptions)
+1. **Download the deployment package** from GitHub:
+   - 📦 [function-deployment.zip](https://github.com/stefze/Attivazione-Bolla/raw/main/function-deployment.zip) (27.6 MB)
+
+2. **Navigate to your Function App** in Azure Portal:
+   - Go to: **Resource Groups** → `<your-rg>` → `func-bolla-*****`
+
+3. **Upload the zip file**:
+   - In the Function App menu, select **Deployment Center**
+   - Under **Manual Deployment**, click **Zip Deploy**
+   - Click **Upload file** and select `function-deployment.zip`
+   - Click **Deploy** and wait for completion
+
+4. **Verify deployment**:
+   - Go to **Functions** in the left menu
+   - You should see: `Get-DRStatus`, `Invoke-DRReplication`
+
+5. **Grant RBAC roles** on source/target subscriptions (if needed):
    ```powershell
-   # Example: Grant Contributor on source/target subscriptions
-   az role assignment create --assignee <FUNCTION_IDENTITY> --role Contributor --subscription <SUB_ID>
+   # Get function's managed identity
+   $identity = az functionapp identity show --name func-bolla-***** --resource-group <rg-name> --query principalId -o tsv
+   
+   # Grant Contributor on source/target subscriptions
+   az role assignment create --assignee $identity --role Contributor --subscription <SOURCE_SUB_ID>
+   az role assignment create --assignee $identity --role Contributor --subscription <TARGET_SUB_ID>
    ```
 
-#### Manual Code Deployment (if autoDeployCode = false)
+#### Manual Code Deployment (Alternative)
 
 If you disabled automatic code deployment, run these steps:
 1. Bundle Az modules: `.\setup-modules.ps1`

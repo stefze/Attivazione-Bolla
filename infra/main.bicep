@@ -25,12 +25,6 @@ param prefix string = 'bolla'
 @description('Unique token for resource names. Defaults to hash based on subscription/resource group/environment.')
 param resourceToken string = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 
-@description('Automatically deploy function code after infrastructure provisioning.')
-param autoDeployCode bool = true
-
-@description('Direct URL to the pre-built deployment zip file on GitHub raw content.')
-param deploymentZipUrl string = 'https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip'
-
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
@@ -50,11 +44,6 @@ var storageBlobDataOwnerRoleId        = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
-var contributorRoleId                 = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
-
-// Deployment automation
-var deploymentIdentityName = 'id-${prefix}-deploy-${resourceToken}'
-var deploymentScriptName   = 'deploy-function-code'
 
 // VNet and subnet names
 var vnetName                    = 'vnet-${prefix}-${resourceToken}'
@@ -612,93 +601,6 @@ resource rbacConfigBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 // ---------------------------------------------------------------------------
-// Automated Function Code Deployment
-// ---------------------------------------------------------------------------
-
-// User-Assigned Managed Identity for deployment script
-resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (autoDeployCode) {
-  name:     deploymentIdentityName
-  location: location
-  tags:     tags
-}
-
-// Grant deployment identity Contributor on resource group (needs access to App Service Plan, Function App, etc.)
-resource rbacDeploymentContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (autoDeployCode) {
-  scope: resourceGroup()
-  name:  guid(resourceGroup().id, deploymentIdentity.id, contributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
-    principalId:      deploymentIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
-
-// Deployment script that clones repo and publishes function code
-resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (autoDeployCode) {
-  name:     deploymentScriptName
-  location: location
-  tags:     tags
-  kind:     'AzureCLI'
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${deploymentIdentity.id}': {}
-    }
-  }
-  properties: {
-    azCliVersion:         '2.59.0'
-    retentionInterval:    'PT1H'
-    timeout:              'PT30M'
-    cleanupPreference:    'OnSuccess'
-    environmentVariables: [
-      {
-        name:  'FUNCTION_APP_NAME'
-        value: functionApp.name
-      }
-      {
-        name:  'RESOURCE_GROUP'
-        value: resourceGroup().name
-      }
-      {
-        name:  'ZIP_URL'
-        value: deploymentZipUrl
-      }
-    ]
-    scriptContent: '''
-      #!/bin/bash
-      set -e
-      
-      echo "==> Downloading deployment package from $ZIP_URL..."
-      wget -q -O /tmp/deployment.zip "$ZIP_URL"
-      
-      echo "==> Logging into Azure..."
-      az login --identity
-      az account set --subscription "$(az account show --query id -o tsv)"
-      
-      echo "==> Deploying function code to $FUNCTION_APP_NAME..."
-      az functionapp deployment source config-zip \
-        --name "$FUNCTION_APP_NAME" \
-        --resource-group "$RESOURCE_GROUP" \
-        --src /tmp/deployment.zip
-      
-      echo "==> Deployment complete!"
-      
-      # Wait a moment for deployment to settle
-      sleep 10
-      
-      # Verify functions deployed
-      echo "==> Verifying functions..."
-      az functionapp function list \
-        --name "$FUNCTION_APP_NAME" \
-        --resource-group "$RESOURCE_GROUP" \
-        --query "[].name" -o tsv
-    '''
-  }
-  dependsOn: [
-    rbacDeploymentContributor
-  ]
-}
-
 // ---------------------------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------------------------
@@ -715,5 +617,3 @@ output APPLICATIONINSIGHTS_CONNECTION_STRING string = appInsights.properties.Con
 output CSV_STORAGE_ACCOUNT_NAME              string = storageConfig.name
 output CSV_STORAGE_BLOB_ENDPOINT             string = storageConfig.properties.primaryEndpoints.blob
 output FUNCTION_APP_URL                      string = 'https://${functionApp.properties.defaultHostName}'
-output AUTO_DEPLOY_ENABLED                   bool   = autoDeployCode
-output DEPLOYMENT_SCRIPT_STATUS              string = autoDeployCode ? deployFunctionCode.properties.provisioningState : 'Disabled'

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "6958873810006603107"
+      "templateHash": "2160361392763344542"
     }
   },
   "parameters": {
@@ -42,20 +42,6 @@
       "metadata": {
         "description": "Unique token for resource names. Defaults to hash based on subscription/resource group/environment."
       }
-    },
-    "autoDeployCode": {
-      "type": "bool",
-      "defaultValue": true,
-      "metadata": {
-        "description": "Automatically deploy function code after infrastructure provisioning."
-      }
-    },
-    "deploymentZipUrl": {
-      "type": "string",
-      "defaultValue": "https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip",
-      "metadata": {
-        "description": "Direct URL to the pre-built deployment zip file on GitHub raw content."
-      }
     }
   },
   "variables": {
@@ -75,9 +61,6 @@
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
     "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
     "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
-    "contributorRoleId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
-    "deploymentIdentityName": "[format('id-{0}-deploy-{1}', parameters('prefix'), parameters('resourceToken'))]",
-    "deploymentScriptName": "deploy-function-code",
     "vnetName": "[format('vnet-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "vnetIntegrationSubnetName": "snet-vnetintegration",
     "privateEndpointSubnetName": "snet-privateendpoints",
@@ -801,69 +784,6 @@
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName'))]"
       ]
-    },
-    {
-      "condition": "[parameters('autoDeployCode')]",
-      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-      "apiVersion": "2023-01-31",
-      "name": "[variables('deploymentIdentityName')]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]"
-    },
-    {
-      "condition": "[parameters('autoDeployCode')]",
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('contributorRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('contributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), '2023-01-31').principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('autoDeployCode')]",
-      "type": "Microsoft.Resources/deploymentScripts",
-      "apiVersion": "2023-08-01",
-      "name": "[variables('deploymentScriptName')]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]",
-      "kind": "AzureCLI",
-      "identity": {
-        "type": "UserAssigned",
-        "userAssignedIdentities": {
-          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')))]": {}
-        }
-      },
-      "properties": {
-        "azCliVersion": "2.59.0",
-        "retentionInterval": "PT1H",
-        "timeout": "PT30M",
-        "cleanupPreference": "OnSuccess",
-        "environmentVariables": [
-          {
-            "name": "FUNCTION_APP_NAME",
-            "value": "[variables('functionAppName')]"
-          },
-          {
-            "name": "RESOURCE_GROUP",
-            "value": "[resourceGroup().name]"
-          },
-          {
-            "name": "ZIP_URL",
-            "value": "[parameters('deploymentZipUrl')]"
-          }
-        ],
-        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Downloading deployment package from $ZIP_URL...\"\n      wget -q -O /tmp/deployment.zip \"$ZIP_URL\"\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Deploying function code to $FUNCTION_APP_NAME...\"\n      az functionapp deployment source config-zip \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --src /tmp/deployment.zip\n      \n      echo \"==> Deployment complete!\"\n      \n      # Wait a moment for deployment to settle\n      sleep 10\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --query \"[].name\" -o tsv\n    "
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('contributorRoleId')))]"
-      ]
     }
   ],
   "outputs": {
@@ -914,14 +834,6 @@
     "FUNCTION_APP_URL": {
       "type": "string",
       "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01').defaultHostName)]"
-    },
-    "AUTO_DEPLOY_ENABLED": {
-      "type": "bool",
-      "value": "[parameters('autoDeployCode')]"
-    },
-    "DEPLOYMENT_SCRIPT_STATUS": {
-      "type": "string",
-      "value": "[if(parameters('autoDeployCode'), reference(resourceId('Microsoft.Resources/deploymentScripts', variables('deploymentScriptName')), '2023-08-01').provisioningState, 'Disabled')]"
     }
   }
 }
