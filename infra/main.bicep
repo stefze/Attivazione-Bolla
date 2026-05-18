@@ -675,31 +675,34 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
       #!/bin/bash
       set -e
       
-      echo "==> Updating package lists..."
-      apt-get update
-      
-      echo "==> Installing Node.js and npm..."
-      apt-get install -y nodejs npm
-      
-      echo "==> Installing Azure Functions Core Tools via npm..."
-      npm install -g azure-functions-core-tools@4 --unsafe-perm true
-      
       echo "==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)..."
       git clone --depth 1 --branch "$GITHUB_BRANCH" "$GITHUB_REPO_URL" /tmp/repo
+      
+      echo "==> Creating deployment package..."
+      cd /tmp/repo/DRReplication
+      zip -r /tmp/deployment.zip .
       
       echo "==> Logging into Azure..."
       az login --identity
       az account set --subscription "$(az account show --query id -o tsv)"
       
-      echo "==> Publishing function code to $FUNCTION_APP_NAME..."
-      cd /tmp/repo/DRReplication
-      func azure functionapp publish "$FUNCTION_APP_NAME" --powershell
+      echo "==> Deploying function code to $FUNCTION_APP_NAME..."
+      az functionapp deployment source config-zip \
+        --name "$FUNCTION_APP_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --src /tmp/deployment.zip
       
       echo "==> Deployment complete!"
       
+      # Wait a moment for deployment to settle
+      sleep 10
+      
       # Verify functions deployed
       echo "==> Verifying functions..."
-      az functionapp function list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv
+      az functionapp function list \
+        --name "$FUNCTION_APP_NAME" \
+        --resource-group "$RESOURCE_GROUP" \
+        --query "[].name" -o tsv
     '''
   }
   dependsOn: [
