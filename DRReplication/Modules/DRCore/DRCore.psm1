@@ -345,7 +345,8 @@ function Invoke-VMReplication {
         Write-Log "Resolving subscriptions." -VmName $SourceVmName
 
         $sourceSub    = Resolve-Subscription -SubscriptionIdentifier $SourceSubscription
-        $targetSubName = "${SourceSubscription}${effSubSuffix}"
+        # Use the resolved subscription name (correct case) instead of CSV value
+        $targetSubName = "$($sourceSub.Name)${effSubSuffix}"
         $targetSub    = Resolve-Subscription -SubscriptionIdentifier $targetSubName
 
         Write-Log "Source sub: '$($sourceSub.Name)' | Target sub: '$($targetSub.Name)'" -VmName $SourceVmName
