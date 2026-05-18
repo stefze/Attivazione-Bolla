@@ -378,6 +378,9 @@ Click the button above to deploy the infrastructure using Azure Portal's guided 
 - Application Insights and Log Analytics workspace
 - All necessary RBAC role assignments
 
+> **📝 Note for maintainers**: If you modify `infra/main.bicep`, remember to recompile to JSON:  
+> `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
+
 After infrastructure deployment, you'll need to:
 1. Run `.\setup-modules.ps1` to bundle Az modules
 2. Publish function code: `func azure functionapp publish <FUNCTION_APP_NAME> --powershell`
