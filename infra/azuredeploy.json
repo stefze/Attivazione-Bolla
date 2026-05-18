@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "2160361392763344542"
+      "templateHash": "8211556875303276504"
     }
   },
   "parameters": {
@@ -42,6 +42,27 @@
       "metadata": {
         "description": "Unique token for resource names. Defaults to hash based on subscription/resource group/environment."
       }
+    },
+    "autoDeployCode": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Automatically deploy function code after infrastructure provisioning."
+      }
+    },
+    "gitHubRepoUrl": {
+      "type": "string",
+      "defaultValue": "https://github.com/stefze/Attivazione-Bolla.git",
+      "metadata": {
+        "description": "GitHub repository URL containing the function code."
+      }
+    },
+    "gitHubBranch": {
+      "type": "string",
+      "defaultValue": "main",
+      "metadata": {
+        "description": "GitHub branch to deploy from."
+      }
     }
   },
   "variables": {
@@ -61,6 +82,9 @@
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
     "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
     "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
+    "websiteContributorRoleId": "de139f84-1756-47ae-9be6-808fbbe84772",
+    "deploymentIdentityName": "[format('id-{0}-deploy-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "deploymentScriptName": "deploy-function-code",
     "vnetName": "[format('vnet-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "vnetIntegrationSubnetName": "snet-vnetintegration",
     "privateEndpointSubnetName": "snet-privateendpoints",
@@ -784,6 +808,75 @@
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName'))]"
       ]
+    },
+    {
+      "condition": "[parameters('autoDeployCode')]",
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('deploymentIdentityName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]"
+    },
+    {
+      "condition": "[parameters('autoDeployCode')]",
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Web/sites/{0}', variables('functionAppName'))]",
+      "name": "[guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('websiteContributorRoleId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('websiteContributorRoleId'))]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('autoDeployCode')]",
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "[variables('deploymentScriptName')]",
+      "location": "[parameters('location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzureCLI",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')))]": {}
+        }
+      },
+      "properties": {
+        "azCliVersion": "2.59.0",
+        "retentionInterval": "PT1H",
+        "timeout": "PT30M",
+        "cleanupPreference": "OnSuccess",
+        "environmentVariables": [
+          {
+            "name": "FUNCTION_APP_NAME",
+            "value": "[variables('functionAppName')]"
+          },
+          {
+            "name": "RESOURCE_GROUP",
+            "value": "[resourceGroup().name]"
+          },
+          {
+            "name": "GITHUB_REPO_URL",
+            "value": "[parameters('gitHubRepoUrl')]"
+          },
+          {
+            "name": "GITHUB_BRANCH",
+            "value": "[parameters('gitHubBranch')]"
+          }
+        ],
+        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Installing Azure Functions Core Tools...\"\n      curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg\n      mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg\n      sh -c 'echo \"deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs)-prod $(lsb_release -cs) main\" > /etc/apt/sources.list.d/dotnetdev.list'\n      apt-get update\n      apt-get install -y azure-functions-core-tools-4\n      \n      echo \"==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)...\"\n      git clone --depth 1 --branch \"$GITHUB_BRANCH\" \"$GITHUB_REPO_URL\" /tmp/repo\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Publishing function code to $FUNCTION_APP_NAME...\"\n      cd /tmp/repo/DRReplication\n      func azure functionapp publish \"$FUNCTION_APP_NAME\" --powershell\n      \n      echo \"==> Deployment complete!\"\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list --name \"$FUNCTION_APP_NAME\" --resource-group \"$RESOURCE_GROUP\" --query \"[].name\" -o tsv\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
+        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+        "[extensionResourceId(resourceId('Microsoft.Web/sites', variables('functionAppName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('websiteContributorRoleId')))]"
+      ]
     }
   ],
   "outputs": {
@@ -834,6 +927,14 @@
     "FUNCTION_APP_URL": {
       "type": "string",
       "value": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01').defaultHostName)]"
+    },
+    "AUTO_DEPLOY_ENABLED": {
+      "type": "bool",
+      "value": "[parameters('autoDeployCode')]"
+    },
+    "DEPLOYMENT_SCRIPT_STATUS": {
+      "type": "string",
+      "value": "[if(parameters('autoDeployCode'), reference(resourceId('Microsoft.Resources/deploymentScripts', variables('deploymentScriptName')), '2023-08-01').provisioningState, 'Disabled')]"
     }
   }
 }

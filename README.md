@@ -371,20 +371,49 @@ All target resource names are derived at runtime from source names by appending 
 
 [![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fazuredeploy.json)
 
-Click the button above to deploy the infrastructure using Azure Portal's guided wizard. The deployment will create:
-- Virtual Network with private networking
-- Function App (Flex Consumption, PowerShell 7.4)
-- Storage accounts with private endpoints
-- Application Insights and Log Analytics workspace
-- All necessary RBAC role assignments
+Click the button above to deploy **infrastructure and function code** using Azure Portal's guided wizard.
+
+#### What Gets Deployed
+
+The deployment will automatically:
+- ✅ Create Virtual Network with private networking
+- ✅ Deploy Function App (Flex Consumption, PowerShell 7.4)
+- ✅ Configure Storage accounts with private endpoints
+- ✅ Setup Application Insights and Log Analytics workspace
+- ✅ Assign all necessary RBAC role assignments
+- ✅ **Clone repository and publish function code** (via Azure Deployment Script)
+
+#### Deployment Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `environmentName` | *Required* | Unique environment name for resource naming |
+| `location` | *Resource Group Location* | Azure region for all resources |
+| `prefix` | `bolla` | Prefix for resource names |
+| `resourceToken` | *Auto-generated* | Unique token (hash of subscription/RG/env) |
+| `autoDeployCode` | `true` | Automatically deploy function code after infrastructure |
+| `gitHubRepoUrl` | `https://github.com/stefze/Attivazione-Bolla.git` | Repository URL to clone |
+| `gitHubBranch` | `main` | Branch to deploy from |
+
+> **💡 Tip**: Set `autoDeployCode = false` if you want to deploy code manually later.
 
 > **📝 Note for maintainers**: If you modify `infra/main.bicep`, remember to recompile to JSON:  
 > `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
 
-After infrastructure deployment, you'll need to:
-1. Run `.\setup-modules.ps1` to bundle Az modules
-2. Publish function code: `func azure functionapp publish <FUNCTION_APP_NAME> --powershell`
-3. Grant RBAC roles on source/target subscriptions
+#### Post-Deployment
+
+After deployment completes (including automated code deployment), you only need to:
+1. **Grant RBAC roles** on source/target subscriptions (if accessing other subscriptions)
+   ```powershell
+   # Example: Grant Contributor on source/target subscriptions
+   az role assignment create --assignee <FUNCTION_IDENTITY> --role Contributor --subscription <SUB_ID>
+   ```
+
+#### Manual Code Deployment (if autoDeployCode = false)
+
+If you disabled automatic code deployment, run these steps:
+1. Bundle Az modules: `.\setup-modules.ps1`
+2. Publish function code: `cd DRReplication; func azure functionapp publish <FUNCTION_APP_NAME> --powershell`
 
 ### Manual Deployment
 

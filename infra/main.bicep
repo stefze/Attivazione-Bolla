@@ -25,6 +25,15 @@ param prefix string = 'bolla'
 @description('Unique token for resource names. Defaults to hash based on subscription/resource group/environment.')
 param resourceToken string = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 
+@description('Automatically deploy function code after infrastructure provisioning.')
+param autoDeployCode bool = true
+
+@description('GitHub repository URL containing the function code.')
+param gitHubRepoUrl string = 'https://github.com/stefze/Attivazione-Bolla.git'
+
+@description('GitHub branch to deploy from.')
+param gitHubBranch string = 'main'
+
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
@@ -44,6 +53,11 @@ var storageBlobDataOwnerRoleId        = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+var websiteContributorRoleId          = 'de139f84-1756-47ae-9be6-808fbbe84772'
+
+// Deployment automation
+var deploymentIdentityName = 'id-${prefix}-deploy-${resourceToken}'
+var deploymentScriptName   = 'deploy-function-code'
 
 // VNet and subnet names
 var vnetName                    = 'vnet-${prefix}-${resourceToken}'
@@ -601,6 +615,97 @@ resource rbacConfigBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-
 }
 
 // ---------------------------------------------------------------------------
+// Automated Function Code Deployment
+// ---------------------------------------------------------------------------
+
+// User-Assigned Managed Identity for deployment script
+resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (autoDeployCode) {
+  name:     deploymentIdentityName
+  location: location
+  tags:     tags
+}
+
+// Grant deployment identity permission to deploy to Function App
+resource rbacDeploymentWebsiteContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (autoDeployCode) {
+  scope: functionApp
+  name:  guid(functionApp.id, deploymentIdentity.id, websiteContributorRoleId)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
+    principalId:      deploymentIdentity.properties.principalId
+    principalType:    'ServicePrincipal'
+  }
+}
+
+// Deployment script that clones repo and publishes function code
+resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (autoDeployCode) {
+  name:     deploymentScriptName
+  location: location
+  tags:     tags
+  kind:     'AzureCLI'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${deploymentIdentity.id}': {}
+    }
+  }
+  properties: {
+    azCliVersion:         '2.59.0'
+    retentionInterval:    'PT1H'
+    timeout:              'PT30M'
+    cleanupPreference:    'OnSuccess'
+    environmentVariables: [
+      {
+        name:  'FUNCTION_APP_NAME'
+        value: functionApp.name
+      }
+      {
+        name:  'RESOURCE_GROUP'
+        value: resourceGroup().name
+      }
+      {
+        name:  'GITHUB_REPO_URL'
+        value: gitHubRepoUrl
+      }
+      {
+        name:  'GITHUB_BRANCH'
+        value: gitHubBranch
+      }
+    ]
+    scriptContent: '''
+      #!/bin/bash
+      set -e
+      
+      echo "==> Installing Azure Functions Core Tools..."
+      curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+      mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
+      sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs)-prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/dotnetdev.list'
+      apt-get update
+      apt-get install -y azure-functions-core-tools-4
+      
+      echo "==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)..."
+      git clone --depth 1 --branch "$GITHUB_BRANCH" "$GITHUB_REPO_URL" /tmp/repo
+      
+      echo "==> Logging into Azure..."
+      az login --identity
+      az account set --subscription "$(az account show --query id -o tsv)"
+      
+      echo "==> Publishing function code to $FUNCTION_APP_NAME..."
+      cd /tmp/repo/DRReplication
+      func azure functionapp publish "$FUNCTION_APP_NAME" --powershell
+      
+      echo "==> Deployment complete!"
+      
+      # Verify functions deployed
+      echo "==> Verifying functions..."
+      az functionapp function list --name "$FUNCTION_APP_NAME" --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv
+    '''
+  }
+  dependsOn: [
+    rbacDeploymentWebsiteContributor
+  ]
+}
+
+// ---------------------------------------------------------------------------
 // Outputs
 // ---------------------------------------------------------------------------
 
@@ -616,3 +721,5 @@ output APPLICATIONINSIGHTS_CONNECTION_STRING string = appInsights.properties.Con
 output CSV_STORAGE_ACCOUNT_NAME              string = storageConfig.name
 output CSV_STORAGE_BLOB_ENDPOINT             string = storageConfig.properties.primaryEndpoints.blob
 output FUNCTION_APP_URL                      string = 'https://${functionApp.properties.defaultHostName}'
+output AUTO_DEPLOY_ENABLED                   bool   = autoDeployCode
+output DEPLOYMENT_SCRIPT_STATUS              string = autoDeployCode ? deployFunctionCode.properties.provisioningState : 'Disabled'
