@@ -6,6 +6,11 @@
         "isEnabled": true,
         "excludedTypes": "Request"
       }
+    },
+    "logLevel": {
+      "default": "Information",
+      "Function": "Information",
+      "Host.Aggregator": "Information"
     }
   },
   "extensionBundle": {
@@ -14,5 +19,14 @@
   },
   "managedDependency": {
     "enabled": false
+  },
+  "extensions": {
+    "queues": {
+      "batchSize": 1,
+      "maxDequeueCount": 3,
+      "newBatchThreshold": 0,
+      "visibilityTimeout": "00:05:00",
+      "maxPollingInterval": "00:00:02"
+    }
   }
 }
