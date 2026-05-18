@@ -392,13 +392,22 @@ The deployment will automatically:
 | `prefix` | `bolla` | Prefix for resource names |
 | `resourceToken` | *Auto-generated* | Unique token (hash of subscription/RG/env) |
 | `autoDeployCode` | `true` | Automatically deploy function code after infrastructure |
-| `gitHubRepoUrl` | `https://github.com/stefze/Attivazione-Bolla.git` | Repository URL to clone |
+| `gitHubRepoUrl` | `https://github.com/stefze/Attivazione-Bolla` | Repository URL for downloading deployment package |
 | `gitHubBranch` | `main` | Branch to deploy from |
+| `deploymentZipFileName` | `function-deployment.zip` | Pre-built deployment package filename |
 
 > **💡 Tip**: Set `autoDeployCode = false` if you want to deploy code manually later.
 
-> **📝 Note for maintainers**: If you modify `infra/main.bicep`, remember to recompile to JSON:  
-> `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
+> **📝 Note for maintainers**: 
+> - If you modify `infra/main.bicep`, recompile to JSON: `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`
+> - If you modify function code in `DRReplication/`, rebuild the deployment package:
+>   ```powershell
+>   cd DRReplication
+>   Compress-Archive -Path * -DestinationPath ..\function-deployment.zip -Force
+>   git add ..\function-deployment.zip
+>   git commit -m "Update deployment package"
+>   git push
+>   ```
 
 #### Post-Deployment
 
