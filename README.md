@@ -156,15 +156,15 @@ The managed identity must be granted roles on the subscriptions/resource groups 
 ```bash
 # Get function's managed identity principal ID
 $principalId = az functionapp identity show `
-  --name func-bolla-i43yiicd2xaxg `
-  --resource-group rg-bolla-dr-prod `
+  --name <FUNCTION_APP_NAME> `
+  --resource-group <RESOURCE_GROUP> `
   --query principalId -o tsv
 
 # Assign Disk Backup Reader on source subscription
 az role assignment create `
   --assignee $principalId `
   --role "Disk Backup Reader" `
-  --scope /subscriptions/bb410b24-2061-4149-87f6-2545ee91a84c
+  --scope /subscriptions/<SOURCE_SUBSCRIPTION_ID>
 ```
 
 ---
@@ -244,8 +244,8 @@ All suffix variables are independent. Set each one to define how target resource
 
 ```bash
 az functionapp config appsettings set \
-  --name func-bolla-i43yiicd2xaxg \
-  --resource-group rg-bolla-dr-prod \
+  --name <FUNCTION_APP_NAME> \
+  --resource-group <RESOURCE_GROUP> \
   --settings TARGET_SUBSCRIPTION_SUFFIX="-DR" TARGET_LB_NAME_SUFFIX="-failover"
 ```
 
@@ -276,7 +276,7 @@ Identity,rg-app-servers,vm-app1
 
 ```bash
 az storage blob upload \
-  --account-name stcfgi43yiicd2xaxg \
+  --account-name <CONFIG_STORAGE_NAME> \
   --container-name dr-configs \
   --name configurations/prod.csv \
   --file ./prod.csv \
@@ -331,7 +331,7 @@ This per-stage logging allows you to pinpoint exactly which stage failed and rev
 
 ```bash
 az storage blob download \
-  --account-name stcfgi43yiicd2xaxg \
+  --account-name <CONFIG_STORAGE_NAME> \
   --container-name dr-logs \
   --name "vm-node1/abc123-vm-node1-20260517-143000-000.log" \
   --file ./vm-node1.log \
@@ -398,7 +398,7 @@ This creates the resource group, storage accounts, app service plan, and functio
 
 ```powershell
 cd DRReplication
-func azure functionapp publish func-bolla-i43yiicd2xaxg --powershell
+func azure functionapp publish <FUNCTION_APP_NAME> --powershell
 ```
 
 > `azd up` is not used for code deployment because `azd` does not support PowerShell function packaging. The `azure.yaml` `postprovision` hook attempts this automatically but may fail with a 403 in restricted environments — run manually in that case.
@@ -415,12 +415,12 @@ azd provision --no-prompt
 
 # Code changes only:
 cd DRReplication
-func azure functionapp publish func-bolla-i43yiicd2xaxg --powershell
+func azure functionapp publish <FUNCTION_APP_NAME> --powershell
 
 # Both:
 azd provision --no-prompt
 cd DRReplication
-func azure functionapp publish func-bolla-i43yiicd2xaxg --powershell
+func azure functionapp publish <FUNCTION_APP_NAME> --powershell
 ```
 
 ---
@@ -430,7 +430,7 @@ func azure functionapp publish func-bolla-i43yiicd2xaxg --powershell
 ### Request
 
 ```
-POST https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Invoke-DRReplication?code=<FUNCTION_KEY>
+POST https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Invoke-DRReplication?code=<FUNCTION_KEY>
 Content-Type: application/json
 
 {
@@ -474,7 +474,7 @@ The `-failed` suffix is added for VMs that encounter errors during replication.
 ### PowerShell example
 
 ```powershell
-$uri  = "https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Invoke-DRReplication?code=<KEY>"
+$uri  = "https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Invoke-DRReplication?code=<KEY>"
 $body = '{"csvBlobPath":"configurations/prod.csv"}'
 $resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType "application/json" -Body $body `
         -StatusCodeVariable status -SkipHttpErrorCheck
@@ -495,7 +495,7 @@ The `Get-DRStatus` function checks the status of the most recent DR replication 
 ### Request
 
 ```
-GET/POST https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?code=<FUNCTION_KEY>
+GET/POST https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Get-DRStatus?code=<FUNCTION_KEY>
 Content-Type: application/json
 
 {
@@ -550,7 +550,7 @@ Content-Type: application/json
 ### PowerShell example
 
 ```powershell
-$uri  = "https://func-bolla-i43yiicd2xaxg.azurewebsites.net/api/Get-DRStatus?code=<KEY>"
+$uri  = "https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Get-DRStatus?code=<KEY>"
 $body = '{"csvBlobPath":"prod/production-config.csv"}'
 $resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType "application/json" -Body $body
 

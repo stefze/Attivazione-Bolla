@@ -195,7 +195,7 @@ Verificare la connettività privata:
 ```powershell
 # Verificare i Private Endpoints
 az network private-endpoint list \
-  --resource-group rg-bolla-dr-prod \
+  --resource-group <RESOURCE_GROUP> \
   --query "[].{Name:name, Status:privateLinkServiceConnections[0].privateLinkServiceConnectionState.status}" \
   --output table
 
