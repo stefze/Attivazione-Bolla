@@ -28,11 +28,14 @@ param resourceToken string = toLower(uniqueString(subscription().id, resourceGro
 @description('Automatically deploy function code after infrastructure provisioning.')
 param autoDeployCode bool = true
 
-@description('GitHub repository URL containing the function code.')
-param gitHubRepoUrl string = 'https://github.com/stefze/Attivazione-Bolla.git'
+@description('GitHub repository URL for downloading the deployment package.')
+param gitHubRepoUrl string = 'https://github.com/stefze/Attivazione-Bolla'
 
 @description('GitHub branch to deploy from.')
 param gitHubBranch string = 'main'
+
+@description('Name of the deployment zip file in the repository root.')
+param deploymentZipFileName string = 'function-deployment.zip'
 
 // ---------------------------------------------------------------------------
 // Variables
@@ -663,24 +666,16 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
         value: resourceGroup().name
       }
       {
-        name:  'GITHUB_REPO_URL'
-        value: gitHubRepoUrl
-      }
-      {
-        name:  'GITHUB_BRANCH'
-        value: gitHubBranch
+        name:  'ZIP_URL'
+        value: '${replace(replace(gitHubRepoUrl, 'https://github.com/', 'https://raw.githubusercontent.com/'), '.git', '')}/${gitHubBranch}/${deploymentZipFileName}'
       }
     ]
     scriptContent: '''
       #!/bin/bash
       set -e
       
-      echo "==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)..."
-      git clone --depth 1 --branch "$GITHUB_BRANCH" "$GITHUB_REPO_URL" /tmp/repo
-      
-      echo "==> Creating deployment package..."
-      cd /tmp/repo/DRReplication
-      zip -r /tmp/deployment.zip .
+      echo "==> Downloading deployment package from $ZIP_URL..."
+      wget -q -O /tmp/deployment.zip "$ZIP_URL"
       
       echo "==> Logging into Azure..."
       az login --identity

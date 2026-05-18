@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "13459366483988935529"
+      "templateHash": "273182770020143831"
     }
   },
   "parameters": {
@@ -52,9 +52,9 @@
     },
     "gitHubRepoUrl": {
       "type": "string",
-      "defaultValue": "https://github.com/stefze/Attivazione-Bolla.git",
+      "defaultValue": "https://github.com/stefze/Attivazione-Bolla",
       "metadata": {
-        "description": "GitHub repository URL containing the function code."
+        "description": "GitHub repository URL for downloading the deployment package."
       }
     },
     "gitHubBranch": {
@@ -62,6 +62,13 @@
       "defaultValue": "main",
       "metadata": {
         "description": "GitHub branch to deploy from."
+      }
+    },
+    "deploymentZipFileName": {
+      "type": "string",
+      "defaultValue": "function-deployment.zip",
+      "metadata": {
+        "description": "Name of the deployment zip file in the repository root."
       }
     }
   },
@@ -862,15 +869,11 @@
             "value": "[resourceGroup().name]"
           },
           {
-            "name": "GITHUB_REPO_URL",
-            "value": "[parameters('gitHubRepoUrl')]"
-          },
-          {
-            "name": "GITHUB_BRANCH",
-            "value": "[parameters('gitHubBranch')]"
+            "name": "ZIP_URL",
+            "value": "[format('{0}/{1}/{2}', replace(replace(parameters('gitHubRepoUrl'), 'https://github.com/', 'https://raw.githubusercontent.com/'), '.git', ''), parameters('gitHubBranch'), parameters('deploymentZipFileName'))]"
           }
         ],
-        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)...\"\n      git clone --depth 1 --branch \"$GITHUB_BRANCH\" \"$GITHUB_REPO_URL\" /tmp/repo\n      \n      echo \"==> Creating deployment package...\"\n      cd /tmp/repo/DRReplication\n      zip -r /tmp/deployment.zip .\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Deploying function code to $FUNCTION_APP_NAME...\"\n      az functionapp deployment source config-zip \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --src /tmp/deployment.zip\n      \n      echo \"==> Deployment complete!\"\n      \n      # Wait a moment for deployment to settle\n      sleep 10\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --query \"[].name\" -o tsv\n    "
+        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Downloading deployment package from $ZIP_URL...\"\n      wget -q -O /tmp/deployment.zip \"$ZIP_URL\"\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Deploying function code to $FUNCTION_APP_NAME...\"\n      az functionapp deployment source config-zip \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --src /tmp/deployment.zip\n      \n      echo \"==> Deployment complete!\"\n      \n      # Wait a moment for deployment to settle\n      sleep 10\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --query \"[].name\" -o tsv\n    "
       },
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
