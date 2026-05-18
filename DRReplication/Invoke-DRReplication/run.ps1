@@ -154,7 +154,7 @@ try {
     # ── Prepare queue messages (one per VM) ──────────────────────────────────────────
     $queueMessages = @()
     foreach ($row in $validRows) {
-        $message = [ordered]@{
+        $message = @{
             invocationId              = $invocationId
             sourceSubscription        = $row.SourceSubscription
             sourceResourceGroup       = $row.SourceResourceGroup
@@ -173,9 +173,10 @@ try {
             targetAsgNameSuffix       = $targetAsgNameSuffix
             logStorageAccountName     = $storageAccountName
             logContainerName          = $logContainerName
-        } | ConvertTo-Json -Compress -Depth 5
+        }
         
         $queueMessages += $message
+        Write-FuncLog "Prepared queue message for VM: $($row.SourceVmName)"
     }
 
     # ── Push all messages to queue ───────────────────────────────────────────────────
