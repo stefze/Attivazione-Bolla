@@ -142,7 +142,7 @@ try {
 
             # Check if replication completed successfully (completion marker log exists)
             $completionMarker = $logBlobs | Where-Object { 
-                $_ -match "stage-Completed-" -and $_ -notmatch "-failed\.log$" 
+                $_ -match "stageCompleted-" -and $_ -notmatch "-failed\.log$" 
             }
 
             if ($completionMarker) {
