@@ -104,19 +104,19 @@ try {
                 if ($blobName -match "^$vmName/([a-f0-9\-]+)-stage") {
                     $invocationId = $matches[1]
                     
-                    # Extract timestamp from filename (yyyyMMdd-HHmm)
-                    if ($blobName -match '(\d{8}-\d{4})') {
-                        $timestamp = $matches[1]
-                        
-                        if (-not $invocations.ContainsKey($invocationId)) {
-                            $invocations[$invocationId] = @{
-                                timestamp = $timestamp
-                                blobs = @()
-                            }
+                    if (-not $invocations.ContainsKey($invocationId)) {
+                        $invocations[$invocationId] = @{
+                            lastModified = $blob.LastModified.UtcDateTime
+                            blobs = @()
                         }
-                        
-                        $invocations[$invocationId].blobs += $blobName
                     }
+                    
+                    # Track the most recent blob modification time for this invocation
+                    if ($blob.LastModified.UtcDateTime -gt $invocations[$invocationId].lastModified) {
+                        $invocations[$invocationId].lastModified = $blob.LastModified.UtcDateTime
+                    }
+                    
+                    $invocations[$invocationId].blobs += $blobName
                 }
             }
 
@@ -130,15 +130,15 @@ try {
                 continue
             }
 
-            # Get the latest invocation by timestamp
+            # Get the latest invocation by blob modification time
             $latestInvocation = $invocations.GetEnumerator() | 
-                Sort-Object { $_.Value.timestamp } -Descending | 
+                Sort-Object { $_.Value.lastModified } -Descending | 
                 Select-Object -First 1
 
             $invocationId = $latestInvocation.Key
             $logBlobs = $latestInvocation.Value.blobs
             
-            Write-StatusLog "Latest invocation for $vmName : $invocationId"
+            Write-StatusLog "Latest invocation for $vmName : $invocationId (last modified: $($latestInvocation.Value.lastModified))"
 
             # Check if replication completed successfully (completion marker log exists)
             $completionMarker = $logBlobs | Where-Object { 
