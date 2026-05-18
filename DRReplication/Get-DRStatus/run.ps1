@@ -160,8 +160,8 @@ try {
                 } | Select-Object -First 1
 
                 if ($failedStage) {
-                    # Extract stage from filename
-                    if ($failedStage -match 'stage-([A-E])-') {
+                    # Extract stage from filename (format: stageX-Failed)
+                    if ($failedStage -match 'stage([A-E])-') {
                         $stageName = "Stage-$($matches[1])"
                         Write-StatusLog "VM $vmName : FAILED at $stageName"
                         $results += @{
@@ -185,9 +185,9 @@ try {
                     
                     # Find the highest stage completed
                     $completedStages = $logBlobs | Where-Object { 
-                        $_ -match "stage-([A-E])-" -and $_ -notmatch "-failed\.log$" 
+                        $_ -match "stage([A-E])-" -and $_ -notmatch "-failed\.log$" 
                     } | ForEach-Object {
-                        if ($_ -match 'stage-([A-E])-') {
+                        if ($_ -match 'stage([A-E])-') {
                             $matches[1]
                         }
                     } | Sort-Object -Descending | Select-Object -First 1
