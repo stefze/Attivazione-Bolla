@@ -675,12 +675,12 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
       #!/bin/bash
       set -e
       
-      echo "==> Installing Azure Functions Core Tools..."
-      curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
-      mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
-      sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/microsoft-ubuntu-$(lsb_release -cs)-prod $(lsb_release -cs) main" > /etc/apt/sources.list.d/dotnetdev.list'
-      apt-get update
-      apt-get install -y azure-functions-core-tools-4
+      echo "==> Installing Node.js and npm..."
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt-get install -y nodejs
+      
+      echo "==> Installing Azure Functions Core Tools via npm..."
+      npm install -g azure-functions-core-tools@4 --unsafe-perm true
       
       echo "==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)..."
       git clone --depth 1 --branch "$GITHUB_BRANCH" "$GITHUB_REPO_URL" /tmp/repo
