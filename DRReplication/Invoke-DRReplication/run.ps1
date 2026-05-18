@@ -164,39 +164,27 @@ try {
         Headers    = @{ 'Content-Type' = 'application/json' }
     })
 
-    # ── Start parallel VM processing in background job (non-blocking) ───────────────
-    Write-FuncLog "Starting background job for VM replication."
-    $job = Start-ThreadJob -ArgumentList $validRows, $drCoreModule, $diskThrottle, $snapshotNamePrefix, 
-                                          $backendPoolNameOverride, $storageAccountName, $logContainerName, 
-                                          $invocationId, $targetSubscriptionSuffix, $targetResourceGroupSuffix,
-                                          $targetVnetNameSuffix, $targetVnetRgSuffix, $targetLbNameSuffix, 
-                                          $targetLbRgSuffix, $targetDesNameSuffix, $targetDesRgSuffix, 
-                                          $targetAsgNameSuffix, $vmParallelThrottle -ScriptBlock {
-        param($ValidRows, $DrCoreModule, $DiskThrottle, $SnapshotPrefix, $PoolOverride, 
-              $LogStorageAcct, $LogContainer, $InvocationId, $SubSuffix, $RgSuffix,
-              $VnetNameSuffix, $VnetRgSuffix, $LbNameSuffix, $LbRgSuffix, 
-              $DesNameSuffix, $DesRgSuffix, $AsgNameSuffix, $VmThrottle)
-        
-        $ValidRows | ForEach-Object -ThrottleLimit $VmThrottle -Parallel {
+    # ── Start parallel VM processing (HTTP response already sent) ───────────────────
+    Write-FuncLog "Starting parallel VM replication (HTTP connection already closed)."
+    
+    $validRows | ForEach-Object -ThrottleLimit $vmParallelThrottle -Parallel {
             $row              = $_
-            $modulePath       = $using:DrCoreModule
-            $diskThrottle     = $using:DiskThrottle
-            $snapshotPrefix   = $using:SnapshotPrefix
-            $poolOverride     = $using:PoolOverride
-            $logStorageAcct   = $using:LogStorageAcct
-            $logContainer     = $using:LogContainer
-            $invocationId     = $using:InvocationId
-            $subSuffix        = $using:SubSuffix
-            $rgSuffix         = $using:RgSuffix
-            $vnetNameSuffix   = $using:VnetNameSuffix
-            $vnetRgSuffix     = $using:VnetRgSuffix
-            $lbNameSuffix     = $using:LbNameSuffix
-            $lbRgSuffix       = $using:LbRgSuffix
-            $desNameSuffix    = $using:DesNameSuffix
-            $desRgSuffix      = $using:DesRgSuffix
-            $asgNameSuffix    = $using:AsgNameSuffix
-
-            try {
+        $modulePath       = $using:drCoreModule
+        $diskThrottle     = $using:diskThrottle
+        $snapshotPrefix   = $using:snapshotNamePrefix
+        $poolOverride     = $using:backendPoolNameOverride
+        $logStorageAcct   = $using:storageAccountName
+        $logContainer     = $using:logContainerName
+        $invocationId     = $using:invocationId
+        $subSuffix        = $using:targetSubscriptionSuffix
+        $rgSuffix         = $using:targetResourceGroupSuffix
+        $vnetNameSuffix   = $using:targetVnetNameSuffix
+        $vnetRgSuffix     = $using:targetVnetRgSuffix
+        $lbNameSuffix     = $using:targetLbNameSuffix
+        $lbRgSuffix       = $using:targetLbRgSuffix
+        $desNameSuffix    = $using:targetDesNameSuffix
+        $desRgSuffix      = $using:targetDesRgSuffix
+        $asgNameSuffix    = $using:targetAsgNameSuffix
                 Import-Module $modulePath -Force -ErrorAction Stop
 
                 # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
@@ -240,8 +228,7 @@ try {
         }
     }
 
-    Write-FuncLog "Background job started (Job ID: $($job.Id)). HTTP response sent. Function will exit."
-    # Function exits here, job continues in background
+    Write-FuncLog "Parallel VM replication completed."
 }
 catch {
     Write-FuncLog "Fatal error: $($_.Exception.Message)" 'ERROR'
