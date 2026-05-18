@@ -675,9 +675,11 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
       #!/bin/bash
       set -e
       
+      echo "==> Updating package lists..."
+      apt-get update
+      
       echo "==> Installing Node.js and npm..."
-      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-      apt-get install -y nodejs
+      apt-get install -y nodejs npm
       
       echo "==> Installing Azure Functions Core Tools via npm..."
       npm install -g azure-functions-core-tools@4 --unsafe-perm true

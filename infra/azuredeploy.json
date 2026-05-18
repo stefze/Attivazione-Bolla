@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "1937392688997499190"
+      "templateHash": "9444507605082166341"
     }
   },
   "parameters": {
@@ -870,7 +870,7 @@
             "value": "[parameters('gitHubBranch')]"
           }
         ],
-        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Installing Node.js and npm...\"\n      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -\n      apt-get install -y nodejs\n      \n      echo \"==> Installing Azure Functions Core Tools via npm...\"\n      npm install -g azure-functions-core-tools@4 --unsafe-perm true\n      \n      echo \"==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)...\"\n      git clone --depth 1 --branch \"$GITHUB_BRANCH\" \"$GITHUB_REPO_URL\" /tmp/repo\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Publishing function code to $FUNCTION_APP_NAME...\"\n      cd /tmp/repo/DRReplication\n      func azure functionapp publish \"$FUNCTION_APP_NAME\" --powershell\n      \n      echo \"==> Deployment complete!\"\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list --name \"$FUNCTION_APP_NAME\" --resource-group \"$RESOURCE_GROUP\" --query \"[].name\" -o tsv\n    "
+        "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Updating package lists...\"\n      apt-get update\n      \n      echo \"==> Installing Node.js and npm...\"\n      apt-get install -y nodejs npm\n      \n      echo \"==> Installing Azure Functions Core Tools via npm...\"\n      npm install -g azure-functions-core-tools@4 --unsafe-perm true\n      \n      echo \"==> Cloning repository: $GITHUB_REPO_URL (branch: $GITHUB_BRANCH)...\"\n      git clone --depth 1 --branch \"$GITHUB_BRANCH\" \"$GITHUB_REPO_URL\" /tmp/repo\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Publishing function code to $FUNCTION_APP_NAME...\"\n      cd /tmp/repo/DRReplication\n      func azure functionapp publish \"$FUNCTION_APP_NAME\" --powershell\n      \n      echo \"==> Deployment complete!\"\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list --name \"$FUNCTION_APP_NAME\" --resource-group \"$RESOURCE_GROUP\" --query \"[].name\" -o tsv\n    "
       },
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
