@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "18233414798265346443"
+      "templateHash": "2160361392763344542"
     }
   },
   "parameters": {
@@ -24,20 +24,36 @@
       "metadata": {
         "description": "Primary location for all resources."
       }
+    },
+    "prefix": {
+      "type": "string",
+      "defaultValue": "bolla",
+      "minLength": 1,
+      "maxLength": 10,
+      "metadata": {
+        "description": "Prefix for resource names."
+      }
+    },
+    "resourceToken": {
+      "type": "string",
+      "defaultValue": "[toLower(uniqueString(subscription().id, resourceGroup().id, parameters('environmentName')))]",
+      "minLength": 1,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Unique token for resource names. Defaults to hash based on subscription/resource group/environment."
+      }
     }
   },
   "variables": {
-    "prefix": "bolla",
-    "resourceToken": "[toLower(uniqueString(subscription().id, resourceGroup().id, parameters('environmentName')))]",
     "tags": {
       "azd-env-name": "[parameters('environmentName')]"
     },
-    "logAnalyticsName": "[format('log-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "appInsightsName": "[format('appi-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "storageFuncName": "[format('stfn{0}', take(variables('resourceToken'), 20))]",
-    "storageConfigName": "[format('stcfg{0}', take(variables('resourceToken'), 19))]",
-    "appServicePlanName": "[format('asp-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "functionAppName": "[format('func-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
+    "logAnalyticsName": "[format('log-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "storageFuncName": "[format('stfn{0}', take(parameters('resourceToken'), 20))]",
+    "storageConfigName": "[format('stcfg{0}', take(parameters('resourceToken'), 19))]",
+    "appServicePlanName": "[format('asp-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "functionAppName": "[format('func-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "deploymentContainerName": "deploymentpackage",
     "csvContainerName": "dr-configs",
     "logContainerName": "dr-logs",
@@ -45,7 +61,7 @@
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
     "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
     "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
-    "vnetName": "[format('vnet-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
+    "vnetName": "[format('vnet-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "vnetIntegrationSubnetName": "snet-vnetintegration",
     "privateEndpointSubnetName": "snet-privateendpoints",
     "privateDnsZoneBlobName": "[format('privatelink.blob.{0}', environment().suffixes.storage)]",

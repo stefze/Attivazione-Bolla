@@ -15,12 +15,19 @@ param environmentName string
 @description('Primary location for all resources.')
 param location string = resourceGroup().location
 
+@minLength(1)
+@maxLength(10)
+@description('Prefix for resource names.')
+param prefix string = 'bolla'
+
+@minLength(1)
+@maxLength(24)
+@description('Unique token for resource names. Defaults to hash based on subscription/resource group/environment.')
+param resourceToken string = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
+
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
-
-var prefix        = 'bolla'
-var resourceToken = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 var tags          = { 'azd-env-name': environmentName }
 
 var logAnalyticsName        = 'log-${prefix}-${resourceToken}'
