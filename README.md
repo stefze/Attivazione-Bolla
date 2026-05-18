@@ -1,5 +1,7 @@
 # Attivazione Bolla — DR Replication Function
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fmain.bicep)
+
 Azure Function (PowerShell 7.4, Flex Consumption) that orchestrates disaster-recovery replication of Azure VMs across subscriptions and resource groups. It reads a CSV configuration from Azure Blob Storage and, for each source VM, performs a full staged replication: snapshots → managed disks → NIC → VM creation → LB backend pool attachment.
 
 ## Table of Contents
@@ -365,7 +367,25 @@ All target resource names are derived at runtime from source names by appending 
 
 ## Deploying the Function
 
-### Prerequisites
+### Quick Deploy
+
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fmain.bicep)
+
+Click the button above to deploy the infrastructure using Azure Portal's guided wizard. The deployment will create:
+- Virtual Network with private networking
+- Function App (Flex Consumption, PowerShell 7.4)
+- Storage accounts with private endpoints
+- Application Insights and Log Analytics workspace
+- All necessary RBAC role assignments
+
+After infrastructure deployment, you'll need to:
+1. Run `.\setup-modules.ps1` to bundle Az modules
+2. Publish function code: `func azure functionapp publish <FUNCTION_APP_NAME> --powershell`
+3. Grant RBAC roles on source/target subscriptions
+
+### Manual Deployment
+
+#### Prerequisites
 
 - [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
