@@ -19,7 +19,7 @@ La soluzione DR Replication implementa un'architettura di rete completamente pri
 - **Nome**: `snet-vnetintegration`
 - **Address Range**: `10.0.0.0/26` (64 indirizzi IP)
 - **Scopo**: Connessione della Function App alla VNet
-- **Delegazione**: Delegata a `Microsoft.Web/serverFarms` per consentire l'integrazione della Function App
+- **Delegazione**: Delegata a `Microsoft.App/environments` per Flex Consumption (FC1) plan
 
 #### Subnet per Private Endpoints
 - **Nome**: `snet-privateendpoints`
