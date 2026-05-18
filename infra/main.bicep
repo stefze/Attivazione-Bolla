@@ -50,7 +50,7 @@ var storageBlobDataOwnerRoleId        = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
-var websiteContributorRoleId          = 'de139f84-1756-47ae-9be6-808fbbe84772'
+var contributorRoleId                 = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 
 // Deployment automation
 var deploymentIdentityName = 'id-${prefix}-deploy-${resourceToken}'
@@ -622,12 +622,12 @@ resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@20
   tags:     tags
 }
 
-// Grant deployment identity permission to deploy to Function App
-resource rbacDeploymentWebsiteContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (autoDeployCode) {
-  scope: functionApp
-  name:  guid(functionApp.id, deploymentIdentity.id, websiteContributorRoleId)
+// Grant deployment identity Contributor on resource group (needs access to App Service Plan, Function App, etc.)
+resource rbacDeploymentContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (autoDeployCode) {
+  scope: resourceGroup()
+  name:  guid(resourceGroup().id, deploymentIdentity.id, contributorRoleId)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleId)
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
     principalId:      deploymentIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
@@ -695,7 +695,7 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
     '''
   }
   dependsOn: [
-    rbacDeploymentWebsiteContributor
+    rbacDeploymentContributor
   ]
 }
 

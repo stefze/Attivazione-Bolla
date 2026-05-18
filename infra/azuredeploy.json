@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "6127685462406107609"
+      "templateHash": "6958873810006603107"
     }
   },
   "parameters": {
@@ -75,7 +75,7 @@
     "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
     "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
     "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
-    "websiteContributorRoleId": "de139f84-1756-47ae-9be6-808fbbe84772",
+    "contributorRoleId": "b24988ac-6180-42a0-ab88-20f7382dd24c",
     "deploymentIdentityName": "[format('id-{0}-deploy-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "deploymentScriptName": "deploy-function-code",
     "vnetName": "[format('vnet-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
@@ -814,16 +814,14 @@
       "condition": "[parameters('autoDeployCode')]",
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Web/sites/{0}', variables('functionAppName'))]",
-      "name": "[guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('websiteContributorRoleId'))]",
+      "name": "[guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('contributorRoleId'))]",
       "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('websiteContributorRoleId'))]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('contributorRoleId'))]",
         "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]"
       ]
     },
     {
@@ -864,7 +862,7 @@
       "dependsOn": [
         "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
         "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[extensionResourceId(resourceId('Microsoft.Web/sites', variables('functionAppName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('websiteContributorRoleId')))]"
+        "[resourceId('Microsoft.Authorization/roleAssignments', guid(resourceGroup().id, resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), variables('contributorRoleId')))]"
       ]
     }
   ],
