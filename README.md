@@ -1,6 +1,6 @@
 # Attivazione Bolla — DR Replication Function
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fmain.bicep)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fazuredeploy.json)
 
 Azure Function (PowerShell 7.4, Flex Consumption) that orchestrates disaster-recovery replication of Azure VMs across subscriptions and resource groups. It reads a CSV configuration from Azure Blob Storage and, for each source VM, performs a full staged replication: snapshots → managed disks → NIC → VM creation → LB backend pool attachment.
 
@@ -369,7 +369,7 @@ All target resource names are derived at runtime from source names by appending 
 
 ### Quick Deploy
 
-[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fmain.bicep)
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fstefze%2FAttivazione-Bolla%2Fmain%2Finfra%2Fazuredeploy.json)
 
 Click the button above to deploy the infrastructure using Azure Portal's guided wizard. The deployment will create:
 - Virtual Network with private networking
