@@ -11,6 +11,13 @@
       "type": "http",
       "direction": "out",
       "name": "Response"
+    },
+    {
+      "type": "queue",
+      "direction": "out",
+      "name": "QueueMessages",
+      "queueName": "dr-replication-queue",
+      "connection": "AzureWebJobsStorage"
     }
   ]
 }

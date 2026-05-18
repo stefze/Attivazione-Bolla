@@ -148,91 +148,52 @@ try {
         throw "DRCore module not found at '$drCoreModule'. Ensure Modules/DRCore/DRCore.psm1 is deployed."
     }
 
-    Write-FuncLog "Starting parallel VM replication. ThrottleLimit=$vmParallelThrottle."
+    Write-FuncLog "Queuing $($validRows.Count) VMs for replication."
     $invocationId = [string]$TriggerMetadata.InvocationId
 
+    # ── Prepare queue messages (one per VM) ──────────────────────────────────────────
+    $queueMessages = @()
+    foreach ($row in $validRows) {
+        $message = [ordered]@{
+            invocationId              = $invocationId
+            sourceSubscription        = $row.SourceSubscription
+            sourceResourceGroup       = $row.SourceResourceGroup
+            sourceVmName              = $row.SourceVmName
+            diskParallelThrottle      = $diskThrottle
+            snapshotNamePrefix        = $snapshotNamePrefix
+            backendPoolNameOverride   = $backendPoolNameOverride
+            targetSubscriptionSuffix  = $targetSubscriptionSuffix
+            targetResourceGroupSuffix = $targetResourceGroupSuffix
+            targetVnetNameSuffix      = $targetVnetNameSuffix
+            targetVnetRgSuffix        = $targetVnetRgSuffix
+            targetLbNameSuffix        = $targetLbNameSuffix
+            targetLbRgSuffix          = $targetLbRgSuffix
+            targetDesNameSuffix       = $targetDesNameSuffix
+            targetDesRgSuffix         = $targetDesRgSuffix
+            targetAsgNameSuffix       = $targetAsgNameSuffix
+            logStorageAccountName     = $storageAccountName
+            logContainerName          = $logContainerName
+        } | ConvertTo-Json -Compress -Depth 5
+        
+        $queueMessages += $message
+    }
+
+    # ── Push all messages to queue ───────────────────────────────────────────────────
+    Push-OutputBinding -Name QueueMessages -Value $queueMessages
+    Write-FuncLog "Queued $($queueMessages.Count) messages for processing."
+
     # ── Return 202 Accepted immediately ─────────────────────────────────────────────
-    Write-FuncLog "Returning 202 Accepted. Processing will continue asynchronously."
+    Write-FuncLog "Returning 202 Accepted. VMs will be processed by queue trigger."
     Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
         StatusCode = [HttpStatusCode]::Accepted
         Body       = ([ordered]@{
-            message       = 'DR replication job accepted and started. Check per-VM logs in blob storage for results.'
+            message       = 'DR replication jobs queued successfully. Check per-VM logs in blob storage for results.'
             invocationId  = $invocationId
             vmCount       = $validRows.Count
-            startedAt     = $startedAt
+            queuedAt      = $startedAt
         } | ConvertTo-Json -Depth 3)
         Headers    = @{ 'Content-Type' = 'application/json' }
     })
-
-    # ── Start parallel VM processing (HTTP response already sent) ───────────────────
-    Write-FuncLog "Starting parallel VM replication (HTTP connection already closed)."
-    
-    $validRows | ForEach-Object -ThrottleLimit $vmParallelThrottle -Parallel {
-        $row              = $_
-        $modulePath       = $using:drCoreModule
-        $diskThrottle     = $using:diskThrottle
-        $snapshotPrefix   = $using:snapshotNamePrefix
-        $poolOverride     = $using:backendPoolNameOverride
-        $logStorageAcct   = $using:storageAccountName
-        $logContainer     = $using:logContainerName
-        $invocationId     = $using:invocationId
-        $subSuffix        = $using:targetSubscriptionSuffix
-        $rgSuffix         = $using:targetResourceGroupSuffix
-        $vnetNameSuffix   = $using:targetVnetNameSuffix
-        $vnetRgSuffix     = $using:targetVnetRgSuffix
-        $lbNameSuffix     = $using:targetLbNameSuffix
-        $lbRgSuffix       = $using:targetLbRgSuffix
-        $desNameSuffix    = $using:targetDesNameSuffix
-        $desRgSuffix      = $using:targetDesRgSuffix
-        $asgNameSuffix    = $using:targetAsgNameSuffix
-
-        try {
-            Write-Host "[PARALLEL] Processing VM: $($row.SourceVmName)"
-            Import-Module $modulePath -Force -ErrorAction Stop
-
-                # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
-                if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
-                    Disable-AzContextAutosave -Scope Process | Out-Null
-                    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
-                }
-
-                $vmResult = Invoke-VMReplication `
-                    -SourceSubscription           $row.SourceSubscription  `
-                    -SourceResourceGroup          $row.SourceResourceGroup  `
-                    -SourceVmName                 $row.SourceVmName         `
-                    -DiskParallelThrottle         $diskThrottle             `
-                    -SnapshotNamePrefix           $snapshotPrefix           `
-                    -BackendPoolNameOverride      $poolOverride             `
-                    -TargetSubscriptionSuffix     $subSuffix                `
-                    -TargetResourceGroupSuffix    $rgSuffix                 `
-                    -TargetVnetNameSuffix         $vnetNameSuffix           `
-                    -TargetVnetRgSuffix           $vnetRgSuffix             `
-                    -TargetLbNameSuffix           $lbNameSuffix             `
-                    -TargetLbRgSuffix             $lbRgSuffix               `
-                    -TargetDesNameSuffix          $desNameSuffix            `
-                    -TargetDesRgSuffix            $desRgSuffix              `
-                    -TargetAsgNameSuffix          $asgNameSuffix            `
-                    -LogStorageAccountName        $logStorageAcct           `
-                    -LogContainerName             $logContainer             `
-                    -InvocationId                 $invocationId
-
-                $vmResult
-            }
-            catch {
-                $errorMsg = "Unhandled exception in parallel block: $($_.Exception.Message)"
-                Write-Host "[PARALLEL ERROR] $($row.SourceVmName): $errorMsg"
-                [pscustomobject]@{
-                    SourceVmName = $row.SourceVmName
-                    TargetVmName = $null
-                    Status       = 'Failed'
-                    Error        = $errorMsg
-                    Summary      = $null
-                    LogEntries   = $null
-                }
-            }
-        }
-
-    Write-FuncLog "Parallel VM replication completed."
 }
 catch {
     Write-FuncLog "Fatal error: $($_.Exception.Message)" 'ERROR'
