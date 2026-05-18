@@ -164,74 +164,84 @@ try {
         Headers    = @{ 'Content-Type' = 'application/json' }
     })
 
-    # ── Parallel VM processing (continues after HTTP response) ──────────────────────
-    $replicationResults = $validRows | ForEach-Object -Parallel {
-        $row              = $_
-        $modulePath       = $using:drCoreModule
-        $diskThrottle     = $using:diskThrottle
-        $snapshotPrefix   = $using:snapshotNamePrefix
-        $poolOverride     = $using:backendPoolNameOverride
-        $logStorageAcct   = $using:storageAccountName
-        $logContainer     = $using:logContainerName
-        $invocationId     = $using:invocationId
-        $subSuffix        = $using:targetSubscriptionSuffix
-        $rgSuffix         = $using:targetResourceGroupSuffix
-        $vnetNameSuffix   = $using:targetVnetNameSuffix
-        $vnetRgSuffix     = $using:targetVnetRgSuffix
-        $lbNameSuffix     = $using:targetLbNameSuffix
-        $lbRgSuffix       = $using:targetLbRgSuffix
-        $desNameSuffix    = $using:targetDesNameSuffix
-        $desRgSuffix      = $using:targetDesRgSuffix
-        $asgNameSuffix    = $using:targetAsgNameSuffix
+    # ── Start parallel VM processing in background job (non-blocking) ───────────────
+    Write-FuncLog "Starting background job for VM replication."
+    $job = Start-ThreadJob -ArgumentList $validRows, $drCoreModule, $diskThrottle, $snapshotNamePrefix, 
+                                          $backendPoolNameOverride, $storageAccountName, $logContainerName, 
+                                          $invocationId, $targetSubscriptionSuffix, $targetResourceGroupSuffix,
+                                          $targetVnetNameSuffix, $targetVnetRgSuffix, $targetLbNameSuffix, 
+                                          $targetLbRgSuffix, $targetDesNameSuffix, $targetDesRgSuffix, 
+                                          $targetAsgNameSuffix, $vmParallelThrottle -ScriptBlock {
+        param($ValidRows, $DrCoreModule, $DiskThrottle, $SnapshotPrefix, $PoolOverride, 
+              $LogStorageAcct, $LogContainer, $InvocationId, $SubSuffix, $RgSuffix,
+              $VnetNameSuffix, $VnetRgSuffix, $LbNameSuffix, $LbRgSuffix, 
+              $DesNameSuffix, $DesRgSuffix, $AsgNameSuffix, $VmThrottle)
+        
+        $ValidRows | ForEach-Object -ThrottleLimit $VmThrottle -Parallel {
+            $row              = $_
+            $modulePath       = $using:DrCoreModule
+            $diskThrottle     = $using:DiskThrottle
+            $snapshotPrefix   = $using:SnapshotPrefix
+            $poolOverride     = $using:PoolOverride
+            $logStorageAcct   = $using:LogStorageAcct
+            $logContainer     = $using:LogContainer
+            $invocationId     = $using:InvocationId
+            $subSuffix        = $using:SubSuffix
+            $rgSuffix         = $using:RgSuffix
+            $vnetNameSuffix   = $using:VnetNameSuffix
+            $vnetRgSuffix     = $using:VnetRgSuffix
+            $lbNameSuffix     = $using:LbNameSuffix
+            $lbRgSuffix       = $using:LbRgSuffix
+            $desNameSuffix    = $using:DesNameSuffix
+            $desRgSuffix      = $using:DesRgSuffix
+            $asgNameSuffix    = $using:AsgNameSuffix
 
-        try {
-            Import-Module $modulePath -Force -ErrorAction Stop
+            try {
+                Import-Module $modulePath -Force -ErrorAction Stop
 
-            # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
-            if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
-                Disable-AzContextAutosave -Scope Process | Out-Null
-                Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
+                if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
+                    Disable-AzContextAutosave -Scope Process | Out-Null
+                    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                }
+
+                $vmResult = Invoke-VMReplication `
+                    -SourceSubscription           $row.SourceSubscription  `
+                    -SourceResourceGroup          $row.SourceResourceGroup  `
+                    -SourceVmName                 $row.SourceVmName         `
+                    -DiskParallelThrottle         $diskThrottle             `
+                    -SnapshotNamePrefix           $snapshotPrefix           `
+                    -BackendPoolNameOverride      $poolOverride             `
+                    -TargetSubscriptionSuffix     $subSuffix                `
+                    -TargetResourceGroupSuffix    $rgSuffix                 `
+                    -TargetVnetNameSuffix         $vnetNameSuffix           `
+                    -TargetVnetRgSuffix           $vnetRgSuffix             `
+                    -TargetLbNameSuffix           $lbNameSuffix             `
+                    -TargetLbRgSuffix             $lbRgSuffix               `
+                    -TargetDesNameSuffix          $desNameSuffix            `
+                    -TargetDesRgSuffix            $desRgSuffix              `
+                    -TargetAsgNameSuffix          $asgNameSuffix            `
+                    -LogStorageAccountName        $logStorageAcct           `
+                    -LogContainerName             $logContainer             `
+                    -InvocationId                 $invocationId
+
+                $vmResult
             }
-
-            $vmResult = Invoke-VMReplication `
-                -SourceSubscription           $row.SourceSubscription  `
-                -SourceResourceGroup          $row.SourceResourceGroup  `
-                -SourceVmName                 $row.SourceVmName         `
-                -DiskParallelThrottle         $diskThrottle             `
-                -SnapshotNamePrefix           $snapshotPrefix           `
-                -BackendPoolNameOverride      $poolOverride             `
-                -TargetSubscriptionSuffix     $subSuffix                `
-                -TargetResourceGroupSuffix    $rgSuffix                 `
-                -TargetVnetNameSuffix         $vnetNameSuffix           `
-                -TargetVnetRgSuffix           $vnetRgSuffix             `
-                -TargetLbNameSuffix           $lbNameSuffix             `
-                -TargetLbRgSuffix             $lbRgSuffix               `
-                -TargetDesNameSuffix          $desNameSuffix            `
-                -TargetDesRgSuffix            $desRgSuffix              `
-                -TargetAsgNameSuffix          $asgNameSuffix            `
-                -LogStorageAccountName        $logStorageAcct           `
-                -LogContainerName             $logContainer             `
-                -InvocationId                 $invocationId
-
-            $vmResult
-        }
-        catch {
-            [pscustomobject]@{
-                SourceVmName = $row.SourceVmName
-                TargetVmName = $null
-                Status       = 'Failed'
-                Error        = "Unhandled exception in parallel block: $($_.Exception.Message)"
-                Summary      = $null
-                LogEntries   = $null
+            catch {
+                [pscustomobject]@{
+                    SourceVmName = $row.SourceVmName
+                    TargetVmName = $null
+                    Status       = 'Failed'
+                    Error        = "Unhandled exception in parallel block: $($_.Exception.Message)"
+                    Summary      = $null
+                    LogEntries   = $null
+                }
             }
         }
-    } -ThrottleLimit $vmParallelThrottle
+    }
 
-    # ── Log final summary (no HTTP response; 202 was already sent) ──────────────────
-    $succeeded   = @($replicationResults | Where-Object { $_.Status -eq 'Succeeded' }).Count
-    $failed      = @($replicationResults | Where-Object { $_.Status -eq 'Failed'    }).Count
-    $completedAt = (Get-Date).ToUniversalTime().ToString('o')
-    Write-FuncLog "Replication complete. Succeeded=$succeeded Failed=$failed Skipped=$($skippedRows.Count) Duration=$([Math]::Round(((Get-Date) - [datetime]$startedAt).TotalSeconds, 1))s"
+    Write-FuncLog "Background job started (Job ID: $($job.Id)). HTTP response sent. Function will exit."
+    # Function exits here, job continues in background
 }
 catch {
     Write-FuncLog "Fatal error: $($_.Exception.Message)" 'ERROR'
