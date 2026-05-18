@@ -13,6 +13,9 @@
 .PARAMETER FunctionUrl
     The Azure Function URL with code for Get-DRStatus endpoint
 
+.PARAMETER CsvBlobPath
+    Optional path to CSV file in blob storage to filter status (e.g., "prod/production-config.csv")
+
 .PARAMETER Watch
     Continuously poll for status updates every N seconds (default: 30)
 
@@ -21,6 +24,10 @@
 
 .EXAMPLE
     .\Get-DRStatus.ps1 -FunctionUrl "https://<FUNCTION_APP>.azurewebsites.net/api/Get-DRStatus?code=<CODE>"
+    
+.EXAMPLE
+    # Query status for specific CSV file
+    .\Get-DRStatus.ps1 -FunctionUrl "https://..." -CsvBlobPath "prod/production-config.csv"
     
 .EXAMPLE
     # Watch mode - continuous polling every 30 seconds
@@ -34,6 +41,9 @@
 param(
     [Parameter(Mandatory=$true)]
     [string]$FunctionUrl,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$CsvBlobPath,
     
     [Parameter(Mandatory=$false)]
     [switch]$Watch,
@@ -61,6 +71,12 @@ function Show-DRStatus {
     Write-Host "   DR REPLICATION STATUS" -ForegroundColor Cyan
     Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
     Write-Host ""
+    
+    if ($CsvBlobPath) {
+        Write-Host "Filtering by CSV: " -NoNewline -ForegroundColor DarkGray
+        Write-Host $CsvBlobPath -ForegroundColor White
+        Write-Host ""
+    }
     
     if ($StatusData.latestInvocation) {
         $inv = $StatusData.latestInvocation
@@ -134,8 +150,15 @@ function Show-DRStatus {
 }
 
 function Invoke-StatusQuery {
+    # Build URL with optional csvBlobPath parameter
+    $uri = $FunctionUrl
+    if ($CsvBlobPath) {
+        $separator = if ($uri -match '\?') { '&' } else { '?' }
+        $uri += "$separator`csvBlobPath=$([System.Uri]::EscapeDataString($CsvBlobPath))"
+    }
+    
     try {
-        $response = Invoke-RestMethod -Uri $FunctionUrl `
+        $response = Invoke-RestMethod -Uri $uri `
                                       -Method GET `
                                       -ContentType "application/json" `
                                       -StatusCodeVariable statusCode `

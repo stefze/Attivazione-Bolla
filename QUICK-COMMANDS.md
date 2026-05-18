@@ -53,11 +53,14 @@ $resp | ConvertTo-Json
 # Single status query (formatted display)
 .\Get-DRStatus.ps1 -FunctionUrl $statusUrl
 
+# Query status for specific CSV file
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "prod/production-config.csv"
+
 # Watch mode - continuous polling every 30 seconds
 .\Get-DRStatus.ps1 -FunctionUrl $statusUrl -Watch
 
-# Watch mode with custom interval (every 10 seconds)
-.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -Watch -WatchInterval 10
+# Watch mode for specific CSV with custom interval
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "prod/production-config.csv" -Watch -WatchInterval 10
 ```
 
 ## Manual Status Check
