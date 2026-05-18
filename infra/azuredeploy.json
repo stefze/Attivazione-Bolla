@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "273182770020143831"
+      "templateHash": "6127685462406107609"
     }
   },
   "parameters": {
@@ -50,25 +50,11 @@
         "description": "Automatically deploy function code after infrastructure provisioning."
       }
     },
-    "gitHubRepoUrl": {
+    "deploymentZipUrl": {
       "type": "string",
-      "defaultValue": "https://github.com/stefze/Attivazione-Bolla",
+      "defaultValue": "https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip",
       "metadata": {
-        "description": "GitHub repository URL for downloading the deployment package."
-      }
-    },
-    "gitHubBranch": {
-      "type": "string",
-      "defaultValue": "main",
-      "metadata": {
-        "description": "GitHub branch to deploy from."
-      }
-    },
-    "deploymentZipFileName": {
-      "type": "string",
-      "defaultValue": "function-deployment.zip",
-      "metadata": {
-        "description": "Name of the deployment zip file in the repository root."
+        "description": "Direct URL to the pre-built deployment zip file on GitHub raw content."
       }
     }
   },
@@ -870,7 +856,7 @@
           },
           {
             "name": "ZIP_URL",
-            "value": "[format('{0}/{1}/{2}', replace(replace(parameters('gitHubRepoUrl'), 'https://github.com/', 'https://raw.githubusercontent.com/'), '.git', ''), parameters('gitHubBranch'), parameters('deploymentZipFileName'))]"
+            "value": "[parameters('deploymentZipUrl')]"
           }
         ],
         "scriptContent": "      #!/bin/bash\n      set -e\n      \n      echo \"==> Downloading deployment package from $ZIP_URL...\"\n      wget -q -O /tmp/deployment.zip \"$ZIP_URL\"\n      \n      echo \"==> Logging into Azure...\"\n      az login --identity\n      az account set --subscription \"$(az account show --query id -o tsv)\"\n      \n      echo \"==> Deploying function code to $FUNCTION_APP_NAME...\"\n      az functionapp deployment source config-zip \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --src /tmp/deployment.zip\n      \n      echo \"==> Deployment complete!\"\n      \n      # Wait a moment for deployment to settle\n      sleep 10\n      \n      # Verify functions deployed\n      echo \"==> Verifying functions...\"\n      az functionapp function list \\\n        --name \"$FUNCTION_APP_NAME\" \\\n        --resource-group \"$RESOURCE_GROUP\" \\\n        --query \"[].name\" -o tsv\n    "

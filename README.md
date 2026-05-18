@@ -392,11 +392,10 @@ The deployment will automatically:
 | `prefix` | `bolla` | Prefix for resource names |
 | `resourceToken` | *Auto-generated* | Unique token (hash of subscription/RG/env) |
 | `autoDeployCode` | `true` | Automatically deploy function code after infrastructure |
-| `gitHubRepoUrl` | `https://github.com/stefze/Attivazione-Bolla` | Repository URL for downloading deployment package |
-| `gitHubBranch` | `main` | Branch to deploy from |
-| `deploymentZipFileName` | `function-deployment.zip` | Pre-built deployment package filename |
+| `deploymentZipUrl` | `https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip` | Direct URL to pre-built deployment package |
 
 > **💡 Tip**: Set `autoDeployCode = false` if you want to deploy code manually later.
+> **🔗 Fork users**: Update `deploymentZipUrl` to point to your forked repository's raw content URL.
 
 > **📝 Note for maintainers**: 
 > - If you modify `infra/main.bicep`, recompile to JSON: `az bicep build --file infra/main.bicep --outfile infra/azuredeploy.json`

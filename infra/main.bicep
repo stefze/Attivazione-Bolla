@@ -28,14 +28,8 @@ param resourceToken string = toLower(uniqueString(subscription().id, resourceGro
 @description('Automatically deploy function code after infrastructure provisioning.')
 param autoDeployCode bool = true
 
-@description('GitHub repository URL for downloading the deployment package.')
-param gitHubRepoUrl string = 'https://github.com/stefze/Attivazione-Bolla'
-
-@description('GitHub branch to deploy from.')
-param gitHubBranch string = 'main'
-
-@description('Name of the deployment zip file in the repository root.')
-param deploymentZipFileName string = 'function-deployment.zip'
+@description('Direct URL to the pre-built deployment zip file on GitHub raw content.')
+param deploymentZipUrl string = 'https://raw.githubusercontent.com/stefze/Attivazione-Bolla/main/function-deployment.zip'
 
 // ---------------------------------------------------------------------------
 // Variables
@@ -667,7 +661,7 @@ resource deployFunctionCode 'Microsoft.Resources/deploymentScripts@2023-08-01' =
       }
       {
         name:  'ZIP_URL'
-        value: '${replace(replace(gitHubRepoUrl, 'https://github.com/', 'https://raw.githubusercontent.com/'), '.git', '')}/${gitHubBranch}/${deploymentZipFileName}'
+        value: deploymentZipUrl
       }
     ]
     scriptContent: '''
