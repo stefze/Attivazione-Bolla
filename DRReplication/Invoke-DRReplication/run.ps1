@@ -168,7 +168,7 @@ try {
     Write-FuncLog "Starting parallel VM replication (HTTP connection already closed)."
     
     $validRows | ForEach-Object -ThrottleLimit $vmParallelThrottle -Parallel {
-            $row              = $_
+        $row              = $_
         $modulePath       = $using:drCoreModule
         $diskThrottle     = $using:diskThrottle
         $snapshotPrefix   = $using:snapshotNamePrefix
@@ -185,7 +185,10 @@ try {
         $desNameSuffix    = $using:targetDesNameSuffix
         $desRgSuffix      = $using:targetDesRgSuffix
         $asgNameSuffix    = $using:targetAsgNameSuffix
-                Import-Module $modulePath -Force -ErrorAction Stop
+
+        try {
+            Write-Host "[PARALLEL] Processing VM: $($row.SourceVmName)"
+            Import-Module $modulePath -Force -ErrorAction Stop
 
                 # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
                 if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
@@ -216,17 +219,18 @@ try {
                 $vmResult
             }
             catch {
+                $errorMsg = "Unhandled exception in parallel block: $($_.Exception.Message)"
+                Write-Host "[PARALLEL ERROR] $($row.SourceVmName): $errorMsg"
                 [pscustomobject]@{
                     SourceVmName = $row.SourceVmName
                     TargetVmName = $null
                     Status       = 'Failed'
-                    Error        = "Unhandled exception in parallel block: $($_.Exception.Message)"
+                    Error        = $errorMsg
                     Summary      = $null
                     LogEntries   = $null
                 }
             }
         }
-    }
 
     Write-FuncLog "Parallel VM replication completed."
 }
