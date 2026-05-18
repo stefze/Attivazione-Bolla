@@ -78,7 +78,7 @@ function Resolve-Subscription {
 function Set-SubscriptionContext {
     param([string]$SubscriptionId, [string]$FriendlyName)
     Invoke-WithRetry -Operation "Set-AzContext $FriendlyName" -ScriptBlock {
-        Set-AzContext -SubscriptionId $SubscriptionId -ErrorAction Stop | Out-Null
+        Set-AzContext -SubscriptionId $SubscriptionId -Scope Process -ErrorAction Stop | Out-Null
     } | Out-Null
 }
 
@@ -609,7 +609,7 @@ function Invoke-VMReplication {
             }
             
             # Set and verify target subscription context
-            $null = Set-AzContext -SubscriptionId $tSubId -ErrorAction Stop
+            $null = Set-AzContext -SubscriptionId $tSubId -Scope Process -ErrorAction Stop
             $currentContext = Get-AzContext
             if ($currentContext.Subscription.Id -ne $tSubId) {
                 throw "Failed to switch to target subscription. Expected: $tSubId, Current: $($currentContext.Subscription.Id)"
