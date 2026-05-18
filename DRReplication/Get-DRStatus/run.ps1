@@ -62,7 +62,10 @@ try {
     Write-StatusLog "Downloading CSV: $csvBlobPath from container $csvContainerName"
     
     $ctx = New-AzStorageContext -StorageAccountName $storageAccountName -UseConnectedAccount -ErrorAction Stop
-    $tempCsvFile = [System.IO.Path]::Combine($env:TEMP, "status-check-$([guid]::NewGuid()).csv")
+    
+    # Use /tmp on Linux (Azure Functions), fallback to TEMP on Windows
+    $tempDir = if (Test-Path '/tmp') { '/tmp' } else { $env:TEMP }
+    $tempCsvFile = [System.IO.Path]::Combine($tempDir, "status-check-$([guid]::NewGuid()).csv")
     
     Get-AzStorageBlobContent -Container $csvContainerName -Blob $csvBlobPath `
         -Destination $tempCsvFile -Context $ctx -Force -ErrorAction Stop | Out-Null
