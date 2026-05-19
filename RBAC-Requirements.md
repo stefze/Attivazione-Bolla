@@ -162,41 +162,58 @@ az role assignment create \
 
 ## 📖 Source Subscription
 
-The managed identity needs **read-only** access to source resources:
+The managed identity needs **read access** to source resources and **disk backup access** to create snapshots:
 
-### Recommended: Reader Role
+### Recommended: Reader + Disk Backup Reader Roles
 
 ```bash
 SOURCE_SUBSCRIPTION_ID="<YOUR_SOURCE_SUBSCRIPTION_ID>"
 
+# 1. Reader role - read VM metadata, disks, NICs, load balancers
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Reader" \
   --scope "/subscriptions/$SOURCE_SUBSCRIPTION_ID"
+
+# 2. Disk Backup Reader - required for snapshot creation from source disks
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Disk Backup Reader" \
+  --scope "/subscriptions/$SOURCE_SUBSCRIPTION_ID"
 ```
 
-**What this provides:**
+**What Reader provides:**
 - ✅ Read source VMs configuration
-- ✅ Read source disks
+- ✅ Read source disks metadata
 - ✅ Read source network interfaces
 - ✅ Read source load balancers
 - ✅ Read all metadata required for replication
+
+**What Disk Backup Reader provides:**
+- ✅ `Microsoft.Compute/disks/beginGetAccess/action` - Required to create snapshots from source disks
+- ✅ Enables Stage B snapshot creation from source subscription disks
+
+> **Important**: Without Disk Backup Reader, snapshot creation in Stage B will fail with "AuthorizationFailed" when attempting to copy from source disks.
 
 ---
 
 ## 🔍 Operations by Stage
 
 ### Stage A: Discover Source VM (Source Subscription)
-- `Microsoft.Compute/virtualMachines/read`
-- `Microsoft.Compute/disks/read`
-- `Microsoft.Network/networkInterfaces/read`
-- `Microsoft.Network/loadBalancers/read`
+- `Microsoft.Compute/virtualMachines/read` ← Reader
+- `Microsoft.Compute/disks/read` ← Reader
+- `Microsoft.Network/networkInterfaces/read` ← Reader
+- `Microsoft.Network/loadBalancers/read` ← Reader
 
-### Stage B: Create Snapshots (Target Subscription)
-- `Microsoft.Compute/diskEncryptionSets/read`
-- `Microsoft.Compute/snapshots/read`
-- `Microsoft.Compute/snapshots/write`
-- `Microsoft.Resources/subscriptions/resourceGroups/read`
+### Stage B: Create Snapshots (Cross-Subscription Operation)
+**Source Subscription:**
+- `Microsoft.Compute/disks/beginGetAccess/action` ← **Disk Backup Reader** (required to copy from source disks)
+
+**Target Subscription:**
+- `Microsoft.Compute/diskEncryptionSets/read` ← Disk Snapshot Contributor
+- `Microsoft.Compute/snapshots/read` ← Disk Snapshot Contributor
+- `Microsoft.Compute/snapshots/write` ← Disk Snapshot Contributor
+- `Microsoft.Resources/subscriptions/resourceGroups/read` ← Disk Snapshot Contributor
 
 ### Stage C: Create Disks (Target Subscription)
 - `Microsoft.Compute/disks/read`
@@ -261,6 +278,23 @@ $ctx = New-AzStorageContext -StorageAccountName "<YOUR_LOG_STORAGE_ACCOUNT>" -Us
 Get-AzStorageContainer -Context $ctx
 ```
 
+### Test Permissions in Source Subscription
+
+```powershell
+# Switch to source subscription
+$sourceSub = "<YOUR_SOURCE_SUBSCRIPTION_ID>"
+Set-AzContext -SubscriptionId $sourceSub
+
+# Test Reader permissions - read VM and disk metadata
+Get-AzVM -ResourceGroupName "<SOURCE_RESOURCE_GROUP>" -Name "<SOURCE_VM_NAME>"
+$sourceDisk = Get-AzDisk -ResourceGroupName "<SOURCE_RESOURCE_GROUP>" -Name "<SOURCE_DISK_NAME>"
+
+# Test Disk Backup Reader permissions - grant snapshot access
+# This is the critical permission needed for Stage B snapshot creation
+$snapConfig = New-AzSnapshotConfig -SourceResourceId $sourceDisk.Id -Location $sourceDisk.Location -CreateOption Copy
+# If the above commands succeed without AuthorizationFailed, permissions are correctly configured
+```
+
 ---
 
 ## 🚨 Common Issues and Solutions
@@ -268,6 +302,10 @@ Get-AzStorageContainer -Context $ctx
 ### Issue: "AuthorizationFailed" or "ResourceNotFound" when reading VNet/Subnet
 **Cause:** Missing `Microsoft.Network/virtualNetworks/read` or `subnets/read` permission  
 **Solution:** Ensure **Network Reader** role is assigned (or custom role with network read permissions)
+
+### Issue: "AuthorizationFailed" when creating snapshots from source disks
+**Cause:** Missing `Microsoft.Compute/disks/beginGetAccess/action` permission in source subscription  
+**Solution:** Ensure **Disk Backup Reader** role is assigned in the source subscription
 
 ### Issue: "AuthorizationFailed" when reading Application Security Groups
 **Cause:** Missing `Microsoft.Network/applicationSecurityGroups/read` permission  
@@ -307,6 +345,7 @@ Get-AzStorageContainer -Context $ctx
 
 2. **Source Subscription**:
    - Role: **Reader** (subscription scope)
+   - Role: **Disk Backup Reader** (subscription scope) - Required for snapshot creation from source disks
 
 ### ⚠️ Important Notes
 
