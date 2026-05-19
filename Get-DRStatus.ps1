@@ -116,11 +116,14 @@ function Show-DRStatus {
         $succeeded = $StatusData.results | Where-Object { $_.status -eq 'SUCCEEDED' }
         $failed = $StatusData.results | Where-Object { $_.status -eq 'FAILED' }
         $inProgress = $StatusData.results | Where-Object { $_.status -eq 'IN_PROGRESS' }
+        $unknown = $StatusData.results | Where-Object { $_.status -eq 'UNKNOWN' }
+        $error = $StatusData.results | Where-Object { $_.status -eq 'ERROR' }
         
         if ($succeeded -and $succeeded.Count -gt 0) {
             Write-Host "✓ Succeeded VMs:" -ForegroundColor Green
             foreach ($vm in $succeeded) {
-                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Green
+                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Green
             }
             Write-Host ""
         }
@@ -128,7 +131,8 @@ function Show-DRStatus {
         if ($failed -and $failed.Count -gt 0) {
             Write-Host "✗ Failed VMs:" -ForegroundColor Red
             foreach ($vm in $failed) {
-                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Red
+                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Red
             }
             Write-Host ""
         }
@@ -136,7 +140,26 @@ function Show-DRStatus {
         if ($inProgress -and $inProgress.Count -gt 0) {
             Write-Host "⟳ VMs In Progress:" -ForegroundColor Yellow
             foreach ($vm in $inProgress) {
-                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Yellow
+                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Yellow
+            }
+            Write-Host ""
+        }
+        
+        if ($error -and $error.Count -gt 0) {
+            Write-Host "⚠ Error Reading Logs:" -ForegroundColor Red
+            foreach ($vm in $error) {
+                $detail = if ($vm.message) { $vm.message } elseif ($vm.completedStage) { "Stage: $($vm.completedStage)" } else { "Unknown error" }
+                Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Red
+            }
+            Write-Host ""
+        }
+        
+        if ($unknown -and $unknown.Count -gt 0) {
+            Write-Host "? Unknown Status:" -ForegroundColor DarkGray
+            foreach ($vm in $unknown) {
+                $detail = if ($vm.message) { $vm.message } elseif ($vm.completedStage) { "Stage: $($vm.completedStage)" } else { "No information available" }
+                Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor DarkGray
             }
             Write-Host ""
         }
