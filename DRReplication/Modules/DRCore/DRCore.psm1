@@ -454,11 +454,6 @@ function Invoke-VMReplication {
             Write-Log "Source LB: '$srcLbName' | Target LB: '$targetLbName' in RG '$targetLbRg'." -VmName $SourceVmName
         }
 
-        # Upload Stage A log
-        Upload-StageLog -VmName $SourceVmName -StageId 'A' -StageDescription 'Discover' -Failed $false `
-            -LogStorageAccountName $LogStorageAccountName -LogContainerName $LogContainerName -InvocationId $InvocationId
-        $script:LogBuffer = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
-
         # Disks
         $vmDiskControllerType = Get-OptionalProp -Object $sourceVm.StorageProfile -PropertyName 'DiskControllerType'
         $diskList = [System.Collections.Generic.List[object]]::new()
@@ -471,8 +466,9 @@ function Invoke-VMReplication {
         $osDiskId   = $osAttach.ManagedDisk.Id
         $osDiskRg   = Get-IdSegmentValue -ResourceId $osDiskId -SegmentName 'resourceGroups'
         $osDiskName = Get-LastNameFromId  -ResourceId $osDiskId
+        Write-Log "Discovering OS disk: '$osDiskName' (RG: '$osDiskRg', sub: '$($sourceSub.Name)')" -VmName $SourceVmName
         $osDisk     = Invoke-WithRetry -Operation "Get-AzDisk $osDiskName" -ScriptBlock {
-            Get-AzDisk -ResourceGroupName $osDiskRg -DiskName $osDiskName -ErrorAction Stop
+            Get-AzDisk -ResourceGroupName $osDiskRg -DiskName $osDiskName -DefaultProfile $sourceCtx -ErrorAction Stop
         }
 
         # Discover Disk Encryption Set from OS disk and derive target DES/RG
@@ -511,8 +507,9 @@ function Invoke-VMReplication {
             $dId   = $dAttach.ManagedDisk.Id
             $dRg   = Get-IdSegmentValue -ResourceId $dId -SegmentName 'resourceGroups'
             $dName = Get-LastNameFromId  -ResourceId $dId
+            Write-Log "Discovering data disk: '$dName' (RG: '$dRg', LUN: $($dAttach.Lun), sub: '$($sourceSub.Name)')" -VmName $SourceVmName
             $dDisk = Invoke-WithRetry -Operation "Get-AzDisk $dName" -ScriptBlock {
-                Get-AzDisk -ResourceGroupName $dRg -DiskName $dName -ErrorAction Stop
+                Get-AzDisk -ResourceGroupName $dRg -DiskName $dName -DefaultProfile $sourceCtx -ErrorAction Stop
             }
             $dSP = Get-OptionalProp -Object $dDisk -PropertyName 'SharingProfile'
             [void]$diskList.Add([pscustomobject]@{
@@ -537,10 +534,33 @@ function Invoke-VMReplication {
         $diskInfos    = @($diskList)
         $targetVmTags = Build-TargetTags -SourceTags $sourceVm.Tags -Prefix '' -ExtraTags $AdditionalTags
 
-        Write-Log ("Stage A complete. VM='$($sourceVm.Name)' Size='$($sourceVm.HardwareProfile.VmSize)' | " +
-                   "Disks=$($diskInfos.Count) | ASGs=$($srcAsgIds.Count) | " +
-                   "TargetSub='$($targetSub.Name)' | TargetRG='$targetVmRg' | " +
-                   "TargetVNet='$targetVnetName' | TargetDES='$targetDesName'") -VmName $SourceVmName
+        # Stage A verbose summary — log every source resource and what target name will be used
+        Write-Log "--- Stage A Discover Plan ---" -VmName $SourceVmName
+        Write-Log "  Source VM:      '$SourceVmName' (RG: '$SourceResourceGroup', sub: '$($sourceSub.Name)')" -VmName $SourceVmName
+        Write-Log "  Target VM:      '$($sourceVm.Name)' (RG: '$targetVmRg', sub: '$($targetSub.Name)')" -VmName $SourceVmName
+        Write-Log "  VM size:        $($sourceVm.HardwareProfile.VmSize)" -VmName $SourceVmName
+        Write-Log "  Target VNet:    '$targetVnetName' / subnet '$targetSubnetName' (RG: '$targetVnetRg')" -VmName $SourceVmName
+        Write-Log "  Target DES:     '$targetDesName' (RG: '$targetDesRg')" -VmName $SourceVmName
+        if ($srcLbName) {
+            Write-Log "  Target LB:      '$targetLbName' (RG: '$targetLbRg')" -VmName $SourceVmName
+        } else {
+            Write-Log "  Target LB:      (none — source VM has no LB attachment)" -VmName $SourceVmName
+        }
+        foreach ($d in $diskInfos) {
+            $tSnapName = "${SnapshotNamePrefix}$($d.Name)"
+            $role = if ($d.Role -eq 'OS') { 'OS' } else { "Data/LUN$($d.Lun)" }
+            Write-Log "  Disk [$role]:   source='$($d.Name)' -> snapshot='$tSnapName' (target RG: '$targetSnapDiskRg')" -VmName $SourceVmName
+        }
+        if ($srcAsgIds.Count -gt 0) {
+            $asgSummary = ($srcAsgIds | ForEach-Object { "$(Get-LastNameFromId -ResourceId $_) -> $(Get-LastNameFromId -ResourceId $_)${effAsgNameSuffix}" }) -join ', '
+            Write-Log "  ASGs:           $asgSummary (resolved in VNet RG: '$targetVnetRg')" -VmName $SourceVmName
+        }
+        Write-Log "--- End Discover Plan ---" -VmName $SourceVmName
+
+        # Upload Stage A log (after full discovery including disks)
+        Upload-StageLog -VmName $SourceVmName -StageId 'A' -StageDescription 'Discover' -Failed $false `
+            -LogStorageAccountName $LogStorageAccountName -LogContainerName $LogContainerName -InvocationId $InvocationId
+        $script:LogBuffer = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
 
         # ── Stage B: Create DES-encrypted snapshots in target subscription (parallel) ──
         $currentStage = 'B'

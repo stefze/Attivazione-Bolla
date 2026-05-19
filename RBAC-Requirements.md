@@ -4,11 +4,21 @@ This document describes the **minimum Azure RBAC permissions** required for the 
 
 ## Overview
 
-The DR Replication Function uses a **system-assigned managed identity** to perform operations across two Azure subscriptions:
+The DR Replication Function uses a **user-assigned managed identity (UAMI)** to perform operations across two Azure subscriptions:
 - **Source Subscription**: Read-only access to source VMs and resources
 - **Target Subscription**: Create and manage DR resources
 
----
+The UAMI is created separately (e.g. `mi-bolla`) and assigned to the Function App. Its client ID is passed to the function via the `AZURE_CLIENT_ID` app setting — this is required so each Az session connects as the correct identity:
+
+```bash
+# Get UAMI principal ID
+PRINCIPAL_ID=$(az identity show \
+  --name mi-bolla \
+  --resource-group <RESOURCE_GROUP> \
+  --query principalId -o tsv)
+```
+
+> **Note**: RBAC role assignments are **not** created by the Bicep template. All assignments must be created manually before the first run.
 
 ## 🎯 Target/Destination Subscription
 
@@ -23,12 +33,7 @@ The **simplest and recommended approach** is to assign **three built-in roles** 
 3. **Network Reader** - for reading VNets, subnets, and ASGs
 
 ```bash
-# Get the Function App's managed identity principal ID
-FUNCTION_APP_NAME="<YOUR_FUNCTION_APP_NAME>"
-FUNCTION_RESOURCE_GROUP="<YOUR_FUNCTION_RESOURCE_GROUP>"
-PRINCIPAL_ID=$(az functionapp identity show --name $FUNCTION_APP_NAME --resource-group $FUNCTION_RESOURCE_GROUP --query principalId -o tsv)
-
-# Target subscription
+# UAMI principal ID (see above)
 TARGET_SUBSCRIPTION_ID="<YOUR_TARGET_SUBSCRIPTION_ID>"
 
 # Assign Virtual Machine Contributor role
@@ -262,8 +267,9 @@ az role assignment list \
 ### Test Permissions in Target Subscription
 
 ```powershell
-# Connect as the managed identity (from within the function or VM)
-Connect-AzAccount -Identity
+# Connect as the UAMI (from within the function or a test VM with the identity assigned)
+$clientId = "<UAMI_CLIENT_ID>"  # AZURE_CLIENT_ID app setting value
+Connect-AzAccount -Identity -AccountId $clientId
 
 # Test reading a disk encryption set
 $targetSub = "<YOUR_TARGET_SUBSCRIPTION_ID>"
@@ -272,10 +278,6 @@ Get-AzDiskEncryptionSet -ResourceGroupName "<YOUR_DES_RESOURCE_GROUP>" -Name "<Y
 
 # Test reading VNet
 Get-AzVirtualNetwork -ResourceGroupName "<YOUR_VNET_RESOURCE_GROUP>" -Name "<YOUR_VNET_NAME>"
-
-# Test reading storage account (should work if Storage Blob Data Contributor assigned)
-$ctx = New-AzStorageContext -StorageAccountName "<YOUR_LOG_STORAGE_ACCOUNT>" -UseConnectedAccount
-Get-AzStorageContainer -Context $ctx
 ```
 
 ### Test Permissions in Source Subscription

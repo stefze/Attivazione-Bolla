@@ -53,10 +53,10 @@ The solution implements a **fully private network architecture** with:
 - **Virtual Network** (10.0.0.0/24) with two subnets:
   - VNet Integration subnet for Function App connectivity
   - Private Endpoints subnet for storage access
-- **Private Endpoints** for all storage accounts (blob, table, queue, file)
-- **Private DNS Zones** for automatic DNS resolution to private IPs
+- **Private Endpoints** for blob access on both storage accounts (`stfn…` and `stcfg…`)
+- **Private DNS Zone** (`privatelink.blob.core.windows.net`) for automatic DNS resolution to private IPs
 - **Network Isolation**: Storage accounts have `publicNetworkAccess: Disabled`
-- **Zero Trust**: Only the Function App with Managed Identity can access storage via private network
+- **Zero Trust**: Only the Function App with User-Assigned Managed Identity can access storage via private network
 
 📖 **Detailed documentation**: See [NETWORK-ARCHITECTURE.md](NETWORK-ARCHITECTURE.md)
 
@@ -114,60 +114,84 @@ All resources are provisioned in a single resource group via `infra/main.bicep` 
 | Storage — Function hosting | `stfn{token}` | `AzureWebJobsStorage`, deployment package (`deploymentpackage` container) |
 | Storage — Config/logs | `stcfg{token}` | `dr-configs` container (CSV), `dr-logs` container (per-VM logs) |
 | App Service Plan | `asp-bolla-{token}` | FC1 / Flex Consumption / Linux |
-| Function App | `func-bolla-{token}` | PowerShell 7.4, 2 GB instance memory, system-assigned MI |
+| User-Assigned Managed Identity | `mi-bolla` | Identity used by the Function App for all Azure API calls |
+| Function App | `func-bolla-{token}` | PowerShell 7.4, 2 GB instance memory, user-assigned MI (`mi-bolla`) |
 
 
 ---
 
 ## Authentication & RBAC
 
-The Function App uses a **system-assigned managed identity** for all Azure API calls. No passwords or connection strings are stored anywhere.
+The Function App uses a **user-assigned managed identity (UAMI)** for all Azure API calls. No passwords or connection strings are stored anywhere.
+
+### User-Assigned Managed Identity
+
+The UAMI (`mi-bolla`) is created in the same resource group as the Function App and assigned to it. Its client ID is set in the `AZURE_CLIENT_ID` app setting so the function can request tokens for the correct identity.
+
+The UAMI must be **pre-assigned** to the Function App **before** Bicep deployment. The Bicep template references it by resource ID — it does not create RBAC role assignments automatically.
 
 ### Function hosting storage (stfn…)
 
+The UAMI connects to `AzureWebJobsStorage` via managed identity (no connection string). The app setting `AzureWebJobsStorage__clientId` tells the Functions host which UAMI to use:
+
+| Required app settings | Value |
+|-----------------------|-------|
+| `AzureWebJobsStorage__blobServiceUri` | `https://{stfn}.blob.core.windows.net/` |
+| `AzureWebJobsStorage__credential` | `managedidentity` |
+| `AzureWebJobsStorage__clientId` | UAMI client ID |
+
+**Pre-assign these roles on the function hosting storage account before deploying:**
+
 | Role | Scope |
 |------|-------|
-| Storage Blob Data Owner | stfn storage account |
 | Storage Blob Data Contributor | stfn storage account |
-| Storage Queue Data Contributor | stfn storage account |
-| Storage Table Data Contributor | stfn storage account |
 
 ### Config/log storage (stcfg…)
 
 | Role | Scope |
 |------|-------|
-| Storage Blob Data Contributor | stcfg storage account |
+| Storage Blob Data Contributor | stcfg storage account or resource group |
 
 This covers both reading the CSV (`dr-configs`) and writing per-VM logs (`dr-logs`).
 
-### Source and target subscriptions (manual grant required)
+### Source and target subscriptions (manual grant — required before first run)
 
-The managed identity must be granted roles on the subscriptions/resource groups it operates on at runtime. Minimum recommended grants:
+The UAMI must be granted roles on the subscriptions/resource groups it operates on at runtime. **These are not assigned by the Bicep template.** Minimum recommended grants:
 
 | Role | Scope | Why |
 |------|-------|-----|
-| **Disk Backup Reader** | Source subscription or source RG | Required for cross-subscription snapshot creation. Includes `Microsoft.Compute/disks/beginGetAccess/action` to get SAS URLs from source disks. **Reader role is insufficient.** |
-| Contributor | Target VM resource group | Create/update VMs, NICs, disks |
-| Contributor | Target snapshot/disk resource group (same as VM RG) | Create snapshots and managed disks |
-| Network Contributor | Target VNet resource group | Attach NICs to VNet/subnet |
-| Reader | Target DES resource group | Read Disk Encryption Set for encrypted snapshots |
-| Reader | Target LB resource group | Read Load Balancer configuration |
+| **Reader** | Source subscription | Read VM metadata, disks, NICs, LBs |
+| **Disk Backup Reader** | Source subscription | Required for cross-subscription snapshot creation (`Microsoft.Compute/disks/beginGetAccess/action`). Reader alone is insufficient. |
+| **Virtual Machine Contributor** | Target subscription or VM/disk RGs | Create VMs, NICs, disks |
+| **Disk Snapshot Contributor** | Target subscription or disk RGs | Create snapshots and managed disks |
+| **Network Reader** | Target subscription or VNet RG | Read VNet, subnet, ASGs, LB |
+| **Storage Blob Data Contributor** | Log storage account (`stcfg…`) | Write per-VM log files |
 
-**Example: Grant Disk Backup Reader on source subscription**
+**Example: assign roles for a UAMI pre-created as `mi-bolla`**
 
 ```bash
-# Get function's managed identity principal ID
-$principalId = az functionapp identity show `
-  --name <FUNCTION_APP_NAME> `
-  --resource-group <RESOURCE_GROUP> `
+# UAMI principal ID (from portal or CLI)
+$uamiPrincipalId = az identity show \
+  --name mi-bolla \
+  --resource-group <RESOURCE_GROUP> \
   --query principalId -o tsv
 
-# Assign Disk Backup Reader on source subscription
-az role assignment create `
-  --assignee $principalId `
-  --role "Disk Backup Reader" `
+# Source subscription
+az role assignment create --assignee $uamiPrincipalId --role "Reader" \
   --scope /subscriptions/<SOURCE_SUBSCRIPTION_ID>
+az role assignment create --assignee $uamiPrincipalId --role "Disk Backup Reader" \
+  --scope /subscriptions/<SOURCE_SUBSCRIPTION_ID>
+
+# Target subscription
+az role assignment create --assignee $uamiPrincipalId --role "Virtual Machine Contributor" \
+  --scope /subscriptions/<TARGET_SUBSCRIPTION_ID>
+az role assignment create --assignee $uamiPrincipalId --role "Disk Snapshot Contributor" \
+  --scope /subscriptions/<TARGET_SUBSCRIPTION_ID>
+az role assignment create --assignee $uamiPrincipalId --role "Network Reader" \
+  --scope /subscriptions/<TARGET_SUBSCRIPTION_ID>
 ```
+
+See [RBAC-Requirements.md](RBAC-Requirements.md) for the full per-stage breakdown.
 
 ---
 
@@ -198,7 +222,7 @@ The `azure.yaml` `postprovision` hook attempts this automatically, but may retur
 
 ### Per-runspace re-authentication
 
-`ForEach-Object -Parallel` creates isolated runspaces that do not inherit the Az context. Each runspace calls `Connect-AzAccount -Identity` before any Az cmdlet. The identity endpoint is detected via `$env:MSI_SECRET` or `$env:IDENTITY_ENDPOINT` (Linux/FC1 uses the latter).
+`ForEach-Object -Parallel` creates isolated runspaces that do not inherit the Az context. Each runspace calls `Connect-AzAccount -Identity -AccountId $clientId` (UAMI client ID from `$env:AZURE_CLIENT_ID`) before any Az cmdlet. The identity endpoint is detected via `$env:MSI_SECRET` or `$env:IDENTITY_ENDPOINT` (Linux/FC1 uses the latter). After switching subscription context with `Set-AzContext`, the active context object is captured and passed explicitly via `-DefaultProfile` to Az cmdlets (prevents rare context race conditions in parallel runspaces).
 
 ### Idempotent operations
 
@@ -380,7 +404,7 @@ The deployment will create:
 - ✅ Function App (Flex Consumption, PowerShell 7.4)
 - ✅ Storage accounts with private endpoints
 - ✅ Application Insights and Log Analytics workspace
-- ✅ All necessary RBAC role assignments
+- ⚠️ RBAC role assignments are **not** created automatically — assign them manually before running replication (see [RBAC-Requirements.md](RBAC-Requirements.md))
 
 #### Deployment Parameters
 
@@ -414,14 +438,19 @@ After infrastructure deployment completes, **upload the function code via Azure 
    - Go to **Functions** in the left menu
    - You should see: `Get-DRStatus`, `Invoke-DRReplication`
 
-5. **Grant RBAC roles** on source/target subscriptions (if needed):
-   ```powershell
-   # Get function's managed identity
-   $identity = az functionapp identity show --name func-bolla-***** --resource-group <rg-name> --query principalId -o tsv
+5. **Grant RBAC roles** on source/target subscriptions — see [RBAC-Requirements.md](RBAC-Requirements.md) for the full list. Quick reference:
+   ```bash
+   # Get UAMI principal ID
+   $principalId = az identity show --name mi-bolla --resource-group <rg-name> --query principalId -o tsv
    
-   # Grant Contributor on source/target subscriptions
-   az role assignment create --assignee $identity --role Contributor --subscription <SOURCE_SUB_ID>
-   az role assignment create --assignee $identity --role Contributor --subscription <TARGET_SUB_ID>
+   # Source subscription: Reader + Disk Backup Reader
+   az role assignment create --assignee $principalId --role "Reader" --scope /subscriptions/<SOURCE_SUB_ID>
+   az role assignment create --assignee $principalId --role "Disk Backup Reader" --scope /subscriptions/<SOURCE_SUB_ID>
+   
+   # Target subscription: VM Contributor + Disk Snapshot Contributor + Network Reader
+   az role assignment create --assignee $principalId --role "Virtual Machine Contributor" --scope /subscriptions/<TARGET_SUB_ID>
+   az role assignment create --assignee $principalId --role "Disk Snapshot Contributor" --scope /subscriptions/<TARGET_SUB_ID>
+   az role assignment create --assignee $principalId --role "Network Reader" --scope /subscriptions/<TARGET_SUB_ID>
    ```
 
 #### Manual Code Deployment via CLI (Alternative)
