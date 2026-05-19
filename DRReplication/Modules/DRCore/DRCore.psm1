@@ -667,6 +667,7 @@ function Invoke-VMReplication {
         # ── Stage C: Create managed disks from snapshots ────────────────────────
         $currentStage = 'C'
         Write-Log 'Stage C: Creating/reusing managed disks.' -VmName $SourceVmName
+        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
         $supportsTier                       = (Get-Command New-AzDiskConfig).Parameters.ContainsKey('Tier')
         $supportsMaxShares                  = (Get-Command New-AzDiskConfig).Parameters.ContainsKey('MaxSharesCount')
