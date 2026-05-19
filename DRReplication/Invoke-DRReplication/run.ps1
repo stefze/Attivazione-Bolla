@@ -33,6 +33,22 @@ $startedAt = (Get-Date).ToUniversalTime().ToString('o')
 Write-FuncLog "DR Replication function invoked."
 
 try {
+    # ── Ensure Az context (guards against profile.ps1 silent failures) ──────────
+    if ($env:IDENTITY_ENDPOINT -or $env:MSI_SECRET) {
+        $azClientId = $env:AZURE_CLIENT_ID
+        if ([string]::IsNullOrWhiteSpace($azClientId)) {
+            throw "AZURE_CLIENT_ID environment variable is not set. Required for user-assigned managed identity authentication."
+        }
+        if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
+            Write-FuncLog "Az context missing (profile.ps1 may have failed). Re-authenticating with UAMI client ID $azClientId."
+            Disable-AzContextAutosave -Scope Process | Out-Null
+            Connect-AzAccount -Identity -AccountId $azClientId -ErrorAction Stop | Out-Null
+            Write-FuncLog "Re-authentication successful."
+        }
+    } else {
+        $azClientId = $env:AZURE_CLIENT_ID
+    }
+
     # ── Parse request body ──────────────────────────────────────────────────────
     $body = $Request.Body
     if ($body -is [string] -and -not [string]::IsNullOrWhiteSpace($body)) {
@@ -170,6 +186,7 @@ try {
     $validRows | ForEach-Object -ThrottleLimit $vmParallelThrottle -Parallel {
         $row              = $_
         $modulePath       = $using:drCoreModule
+        $clientId         = $using:azClientId
         $diskThrottle     = $using:diskThrottle
         $snapshotPrefix   = $using:snapshotNamePrefix
         $poolOverride     = $using:backendPoolNameOverride
@@ -193,7 +210,7 @@ try {
                 # Re-authenticate in each runspace (parallel runspaces don't inherit the Az context)
                 if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
                     Disable-AzContextAutosave -Scope Process | Out-Null
-                    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                    Connect-AzAccount -Identity -AccountId $clientId -ErrorAction Stop | Out-Null
                 }
 
                 $vmResult = Invoke-VMReplication `
