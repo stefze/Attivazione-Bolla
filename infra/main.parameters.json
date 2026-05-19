@@ -7,6 +7,9 @@
     },
     "location": {
       "value": "${AZURE_LOCATION}"
+    },
+    "userAssignedIdentityId": {
+      "value": "${USER_ASSIGNED_IDENTITY_ID}"
     }
   }
 }
