@@ -640,6 +640,13 @@ function Invoke-VMReplication {
         # Re-establish target subscription context in main thread after parallel processing
         Write-Log "Re-establishing target subscription context after parallel snapshot creation." -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        
+        # Verify and log current context
+        $currentCtx = Get-AzContext
+        Write-Log "Stage B post-parallel context verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Stage B post-parallel context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
 
         $snapshotByDiskName = @{}
         foreach ($r in $snapshotResults) {
@@ -665,6 +672,13 @@ function Invoke-VMReplication {
         $currentStage = 'C'
         Write-Log 'Stage C: Creating/reusing managed disks.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        
+        # Verify and log current context
+        $currentCtx = Get-AzContext
+        Write-Log "Stage C context verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Stage C context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
 
         $supportsTier                       = (Get-Command New-AzDiskConfig).Parameters.ContainsKey('Tier')
         $supportsMaxShares                  = (Get-Command New-AzDiskConfig).Parameters.ContainsKey('MaxSharesCount')
@@ -723,6 +737,13 @@ function Invoke-VMReplication {
         $currentStage = 'D'
         Write-Log 'Stage D: Creating/reusing NIC and VM.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        
+        # Verify and log current context
+        $currentCtx = Get-AzContext
+        Write-Log "Stage D context verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Stage D context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
 
         $targetVnet = Invoke-WithRetry -Operation "Get-AzVirtualNetwork $targetVnetName" -ScriptBlock {
             Get-AzVirtualNetwork -ResourceGroupName $targetVnetRg -Name $targetVnetName -ErrorAction Stop
@@ -858,6 +879,13 @@ function Invoke-VMReplication {
             $currentStage = 'E'
             Write-Log 'Stage E: Attaching NIC to load balancer backend pool.' -VmName $SourceVmName
             Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+            
+            # Verify and log current context
+            $currentCtx = Get-AzContext
+            Write-Log "Stage E context verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+            if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+                throw "Stage E context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+            }
 
             $lb = Invoke-WithRetry -Operation "Get-AzLoadBalancer $targetLbName" -ScriptBlock {
                 Get-AzLoadBalancer -ResourceGroupName $targetLbRg -Name $targetLbName -ErrorAction Stop
