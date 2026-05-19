@@ -14,9 +14,12 @@ The DR Replication Function uses a **system-assigned managed identity** to perfo
 
 The managed identity needs permissions to create and manage DR infrastructure in the target subscription.
 
-### Recommended: Virtual Machine Contributor
+### Recommended: Multiple Built-in Roles
 
-The **simplest and recommended approach** is to assign the **Virtual Machine Contributor** built-in role at the **target subscription** or **target resource group** scope:
+The **simplest and recommended approach** is to assign **two built-in roles** at the **target subscription** scope:
+
+1. **Virtual Machine Contributor** - for VMs and NICs
+2. **Disk Snapshot Contributor** - for snapshots and disks
 
 ```bash
 # Get the Function App's managed identity principal ID
@@ -26,28 +29,39 @@ PRINCIPAL_ID=$(az functionapp identity show --name $FUNCTION_APP_NAME --resource
 # Target subscription
 TARGET_SUBSCRIPTION_ID="f255afb5-b435-497a-8def-92f104d8d92a"  # identity-dr
 
-# Assign Virtual Machine Contributor role at subscription scope
+# Assign Virtual Machine Contributor role
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Virtual Machine Contributor" \
   --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
+
+# Assign Disk Snapshot Contributor role (for snapshots and disks)
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Disk Snapshot Contributor" \
+  --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
 ```
 
-**What this role provides:**
+**What Virtual Machine Contributor provides:**
 - ✅ Create/read/update Virtual Machines
 - ✅ Create/read/update Network Interfaces
-- ✅ Create/read Disks and Snapshots
 - ✅ Read Virtual Networks, Subnets, and Application Security Groups
-- ✅ Read Load Balancers
+- ✅ Read Load Balancers and attach to backend pools
 - ✅ Manage VM boot diagnostics
+
+**What Disk Snapshot Contributor provides:**
+- ✅ Create/read/delete Snapshots
+- ✅ Create/read/delete Disks
 - ✅ Read Disk Encryption Sets
 
-**What this role does NOT provide:**
+> **Why two roles?** Virtual Machine Contributor does NOT include permissions for disk and snapshot operations. Microsoft separates VM lifecycle management from disk/snapshot management for security isolation.
+
+**What these roles do NOT provide:**
 - ❌ Write to Storage Account (required for logging)
 
 ### Additional Storage Permission Required
 
-Even with Virtual Machine Contributor, you must separately grant **Storage Blob Data Contributor** to the **log storage account**:
+You must also grant **Storage Blob Data Contributor** to the **log storage account**:
 
 ```bash
 # Log storage account (in target subscription)
@@ -72,14 +86,14 @@ az role assignment create \
 
 ## 📋 Alternative: Granular Custom Role (Least Privilege)
 
-If organizational policy requires **least privilege access**, create a custom role with only the required permissions:
+If organizational policy requires **least privilege access** or you want to avoid assigning two separate roles, create a single custom role with only the required permissions:
 
 ### Custom Role Definition
 
 ```json
 {
   "Name": "DR Replication Target Operator",
-  "Description": "Minimum permissions for DR replication in target subscription",
+  "Description": "Minimum permissions for DR replication in target subscription - combines VM and Disk/Snapshot operations",
   "Actions": [
     "Microsoft.Compute/disks/read",
     "Microsoft.Compute/disks/write",
@@ -117,7 +131,7 @@ If organizational policy requires **least privilege access**, create a custom ro
 # Create custom role
 az role definition create --role-definition @dr-target-role.json
 
-# Assign custom role
+# Assign custom role (replaces both Virtual Machine Contributor + Disk Snapshot Contributor)
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "DR Replication Target Operator" \
@@ -239,7 +253,11 @@ Get-AzStorageContainer -Context $ctx
 
 ### Issue: "AuthorizationFailed" during snapshot creation
 **Cause:** Missing `Microsoft.Compute/snapshots/write` permission  
-**Solution:** Ensure **Virtual Machine Contributor** or custom role with snapshot write is assigned
+**Solution:** Ensure **Disk Snapshot Contributor** role is assigned (or custom role with snapshot write)
+
+### Issue: "AuthorizationFailed" during disk creation
+**Cause:** Missing `Microsoft.Compute/disks/write` permission  
+**Solution:** Ensure **Disk Snapshot Contributor** role is assigned (or custom role with disk write)
 
 ### Issue: "Forbidden" when uploading logs
 **Cause:** Missing **Storage Blob Data Contributor** role on log storage account  
@@ -251,7 +269,7 @@ Get-AzStorageContainer -Context $ctx
 
 ### Issue: "Failed to attach NIC to backend pool"
 **Cause:** Missing `Microsoft.Network/loadBalancers/backendAddressPools/join/action`  
-**Solution:** Ensure Virtual Machine Contributor or custom role includes load balancer join action
+**Solution:** Ensure Virtual Machine Contributor role includes load balancer join action
 
 ---
 
@@ -261,6 +279,7 @@ Get-AzStorageContainer -Context $ctx
 
 1. **Target Subscription (identity-dr)**:
    - Role: **Virtual Machine Contributor** (subscription or resource group scope)
+   - Role: **Disk Snapshot Contributor** (subscription or resource group scope)
    - Role: **Storage Blob Data Contributor** (log storage account scope)
 
 2. **Source Subscription (Identity)**:
