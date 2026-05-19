@@ -618,7 +618,7 @@ function Invoke-VMReplication {
             }
 
             $cfg     = _retry -op "New-AzSnapshotConfig $snapName" -sb { New-AzSnapshotConfig @cfgArgs -ErrorAction Stop }
-            $newSnap = _retry -op "New-AzSnapshot $snapName"       -sb { New-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -Snapshot $cfg -ErrorAction Stop }
+            $newSnap = _retry -op "New-AzSnapshot $snapName"       -sb { New-AzSnapshot -SubscriptionId $tSubId -ResourceGroupName $tSnapRg -SnapshotName $snapName -Snapshot $cfg -ErrorAction Stop }
 
             [pscustomobject]@{ DiskName = $disk.Name; SnapshotName = $snapName; SnapshotId = $newSnap.Id; Status = 'Created' }
         }
@@ -707,7 +707,7 @@ function Invoke-VMReplication {
 
             $diskConfig = Invoke-WithRetry -Operation "New-AzDiskConfig $($disk.Name)" -ScriptBlock { New-AzDiskConfig @cfgArgs -ErrorAction Stop }
             $newDisk    = Invoke-WithRetry -Operation "New-AzDisk $($disk.Name)" -ScriptBlock {
-                New-AzDisk -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -Disk $diskConfig -ErrorAction Stop
+                New-AzDisk -SubscriptionId $targetSub.Id -ResourceGroupName $targetSnapDiskRg -DiskName $disk.Name -Disk $diskConfig -ErrorAction Stop
             }
             $targetDisksByName[$disk.Name] = $newDisk
             [void]$summary.DisksCreated.Add($disk.Name)
@@ -804,7 +804,7 @@ function Invoke-VMReplication {
             if ($targetAsgIds.Count -gt 0) { $ipCfgArgs['ApplicationSecurityGroupId'] = $targetAsgIds }
             $ipCfg = New-AzNetworkInterfaceIpConfig @ipCfgArgs -ErrorAction Stop
             $targetNic = Invoke-WithRetry -Operation "New-AzNetworkInterface $targetNicName" -ScriptBlock {
-                New-AzNetworkInterface -ResourceGroupName $targetVmRg -Location $targetLocation `
+                New-AzNetworkInterface -SubscriptionId $targetSub.Id -ResourceGroupName $targetVmRg -Location $targetLocation `
                     -Name $targetNicName -IpConfiguration $ipCfg -Tag $targetVmTags -ErrorAction Stop
             }
             [void]$summary.NicsCreated.Add($targetNicName)
@@ -880,7 +880,7 @@ function Invoke-VMReplication {
             $vmConfig = Set-AzVMBootDiagnostic -VM $vmConfig -Enable -ResourceGroupName $targetVmRg -ErrorAction Stop
 
             Invoke-WithRetry -Operation "New-AzVM $targetVmName" -ScriptBlock {
-                New-AzVM -ResourceGroupName $targetVmRg -Location $targetLocation `
+                New-AzVM -SubscriptionId $targetSub.Id -ResourceGroupName $targetVmRg -Location $targetLocation `
                     -VM $vmConfig -Tag $targetVmTags -ErrorAction Stop | Out-Null
             } | Out-Null
 
@@ -932,7 +932,7 @@ function Invoke-VMReplication {
                 $nicIpCfgForLb.LoadBalancerBackendAddressPools += $pool
 
                 Invoke-WithRetry -Operation 'Set-AzNetworkInterface (LB pool attach)' -ScriptBlock {
-                    Set-AzNetworkInterface -NetworkInterface $targetNic -ErrorAction Stop | Out-Null
+                    Set-AzNetworkInterface -SubscriptionId $targetSub.Id -NetworkInterface $targetNic -ErrorAction Stop | Out-Null
                 } | Out-Null
 
                 # Verify
