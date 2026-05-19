@@ -7,6 +7,7 @@ This document describes the **minimum Azure RBAC permissions** required for the 
 The DR Replication Function uses a **user-assigned managed identity (UAMI)** to perform operations across two Azure subscriptions:
 - **Source Subscription**: Read-only access to source VMs and resources
 - **Target Subscription**: Create and manage DR resources
+- **Function App Resource Group**: Write access to log storage
 
 The UAMI is created separately (e.g. `mi-bolla`) and assigned to the Function App. Its client ID is passed to the function via the `AZURE_CLIENT_ID` app setting — this is required so each Az session connects as the correct identity:
 
@@ -26,34 +27,45 @@ The managed identity needs permissions to create and manage DR infrastructure in
 
 ### Recommended: Multiple Built-in Roles
 
-The **simplest and recommended approach** is to assign **three built-in roles** at the **target subscription** scope:
+The **simplest and recommended approach** is to assign **four built-in roles** at the **target subscription** scope:
 
-1. **Virtual Machine Contributor** - for VMs and NICs (create/update)
-2. **Disk Snapshot Contributor** - for snapshots and disks
-3. **Network Reader** - for reading VNets, subnets, and ASGs
+1. **Reader** - read existing resources (DES, resource groups, location lookup)
+2. **Virtual Machine Contributor** - create/update VMs and NICs
+3. **Disk Snapshot Contributor** - create snapshots and managed disks
+4. **Network Contributor** - read and join VNets, subnets, ASGs, and LB backend pools
 
 ```bash
 # UAMI principal ID (see above)
 TARGET_SUBSCRIPTION_ID="<YOUR_TARGET_SUBSCRIPTION_ID>"
 
-# Assign Virtual Machine Contributor role
+# 1. Reader - read existing resources
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Reader" \
+  --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
+
+# 2. Virtual Machine Contributor - create/update VMs and NICs
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Virtual Machine Contributor" \
   --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
 
-# Assign Disk Snapshot Contributor role (for snapshots and disks)
+# 3. Disk Snapshot Contributor - create snapshots and disks
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Disk Snapshot Contributor" \
   --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
 
-# Assign Network Reader role (for reading VNets, subnets, ASGs)
+# 4. Network Contributor - read and join VNets, subnets, ASGs, LB backend pools
 az role assignment create \
   --assignee $PRINCIPAL_ID \
-  --role "Network Reader" \
+  --role "Network Contributor" \
   --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
 ```
+
+**What Reader provides:**
+- ✅ Read Disk Encryption Sets (required to locate the target DES before snapshot creation)
+- ✅ Read resource groups and metadata across the target subscription
 
 **What Virtual Machine Contributor provides:**
 - ✅ Create/update/delete Virtual Machines
@@ -66,39 +78,38 @@ az role assignment create \
 - ✅ Create/read/delete Disks
 - ✅ Read Disk Encryption Sets
 
-**What Network Reader provides:**
+**What Network Contributor provides:**
 - ✅ Read Virtual Networks and Subnets
 - ✅ Read Application Security Groups
-- ✅ Read Load Balancers
-- ✅ Read NSGs and other network resources
+- ✅ Read Load Balancers and backend pools
+- ✅ Join subnets (`subnets/join/action`) — required when attaching NICs
+- ✅ Join LB backend pools (`backendAddressPools/join/action`) — required for Stage E
 
-> **Why three roles?** Virtual Machine Contributor can CREATE NICs and JOIN subnets/LB pools, but does NOT include permissions to READ VNets, subnets, or ASGs. Network Reader provides the necessary read access to discover and reference network resources.
+> **Why Network Contributor and not Network Reader?** Network Reader provides only read access. The function must also join subnets and LB backend pools, which requires write-level actions (`join/action`) that only Network Contributor (or Virtual Machine Contributor) includes.
 
 **What these roles do NOT provide:**
 - ❌ Write to Storage Account (required for logging)
 
-### Additional Storage Permission Required
+### Storage Blob Data Contributor on Function App Resource Group
 
-You must also grant **Storage Blob Data Contributor** to the **log storage account**:
+The UAMI must be able to write log blobs to the config/log storage account (`stcfg…`). Grant **Storage Blob Data Contributor** at the **function app resource group** scope (which contains both storage accounts):
 
 ```bash
-# Log storage account (in target subscription)
-LOG_STORAGE_ACCOUNT_NAME="<YOUR_LOG_STORAGE_ACCOUNT>"
-LOG_STORAGE_RESOURCE_GROUP="<YOUR_LOG_RESOURCE_GROUP>"
+FUNCTION_APP_RESOURCE_GROUP="<YOUR_FUNCTION_RG>"  # e.g. rg-bolla-umi
 
-# Get storage account resource ID
-STORAGE_ID=$(az storage account show \
-  --name $LOG_STORAGE_ACCOUNT_NAME \
-  --resource-group $LOG_STORAGE_RESOURCE_GROUP \
-  --subscription $TARGET_SUBSCRIPTION_ID \
+# Get resource group resource ID
+FUNCTION_RG_ID=$(az group show \
+  --name $FUNCTION_APP_RESOURCE_GROUP \
   --query id -o tsv)
 
-# Assign Storage Blob Data Contributor for logging
+# Assign Storage Blob Data Contributor on the function app resource group
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Storage Blob Data Contributor" \
-  --scope "$STORAGE_ID"
+  --scope "$FUNCTION_RG_ID"
 ```
+
+This covers both the hosting storage account (`stfn…`) and the config/log storage account (`stcfg…`) in a single assignment.
 
 ---
 
@@ -150,7 +161,7 @@ If organizational policy requires **least privilege access** or you want to avoi
 # Create custom role
 az role definition create --role-definition @dr-target-role.json
 
-# Assign custom role (replaces Virtual Machine Contributor + Disk Snapshot Contributor + Network Reader)
+# Assign custom role (replaces Reader + Virtual Machine Contributor + Disk Snapshot Contributor + Network Contributor)
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "DR Replication Target Operator" \
@@ -227,10 +238,10 @@ az role assignment create \
 - `Microsoft.Compute/diskEncryptionSets/read`
 
 ### Stage D: Create NIC and VM (Target Subscription)
-- `Microsoft.Network/virtualNetworks/read` ← **Network Reader**
-- `Microsoft.Network/virtualNetworks/subnets/read` ← **Network Reader**
-- `Microsoft.Network/virtualNetworks/subnets/join/action` ← Virtual Machine Contributor
-- `Microsoft.Network/applicationSecurityGroups/read` ← **Network Reader**
+- `Microsoft.Network/virtualNetworks/read` ← **Network Contributor**
+- `Microsoft.Network/virtualNetworks/subnets/read` ← **Network Contributor**
+- `Microsoft.Network/virtualNetworks/subnets/join/action` ← **Network Contributor**
+- `Microsoft.Network/applicationSecurityGroups/read` ← **Network Contributor**
 - `Microsoft.Network/networkInterfaces/read` ← Virtual Machine Contributor
 - `Microsoft.Network/networkInterfaces/write` ← Virtual Machine Contributor
 - `Microsoft.Network/networkInterfaces/join/action` ← Virtual Machine Contributor
@@ -239,9 +250,9 @@ az role assignment create \
 - `Microsoft.Compute/disks/read` ← Disk Snapshot Contributor
 
 ### Stage E: Attach to Load Balancer (Target Subscription)
-- `Microsoft.Network/loadBalancers/read` ← **Network Reader**
-- `Microsoft.Network/loadBalancers/backendAddressPools/read` ← **Network Reader**
-- `Microsoft.Network/loadBalancers/backendAddressPools/join/action` ← Virtual Machine Contributor
+- `Microsoft.Network/loadBalancers/read` ← **Network Contributor**
+- `Microsoft.Network/loadBalancers/backendAddressPools/read` ← **Network Contributor**
+- `Microsoft.Network/loadBalancers/backendAddressPools/join/action` ← **Network Contributor**
 - `Microsoft.Network/networkInterfaces/read` ← Virtual Machine Contributor
 - `Microsoft.Network/networkInterfaces/write` ← Virtual Machine Contributor
 
@@ -303,7 +314,7 @@ $snapConfig = New-AzSnapshotConfig -SourceResourceId $sourceDisk.Id -Location $s
 
 ### Issue: "AuthorizationFailed" or "ResourceNotFound" when reading VNet/Subnet
 **Cause:** Missing `Microsoft.Network/virtualNetworks/read` or `subnets/read` permission  
-**Solution:** Ensure **Network Reader** role is assigned (or custom role with network read permissions)
+**Solution:** Ensure **Network Contributor** role is assigned (or custom role with network read permissions)
 
 ### Issue: "AuthorizationFailed" when creating snapshots from source disks
 **Cause:** Missing `Microsoft.Compute/disks/beginGetAccess/action` permission in source subscription  
@@ -311,7 +322,7 @@ $snapConfig = New-AzSnapshotConfig -SourceResourceId $sourceDisk.Id -Location $s
 
 ### Issue: "AuthorizationFailed" when reading Application Security Groups
 **Cause:** Missing `Microsoft.Network/applicationSecurityGroups/read` permission  
-**Solution:** Ensure **Network Reader** role is assigned (or custom role with ASG read)
+**Solution:** Ensure **Network Contributor** role is assigned (or custom role with ASG read)
 
 ### Issue: "AuthorizationFailed" during snapshot creation
 **Cause:** Missing `Microsoft.Compute/snapshots/write` permission  
@@ -322,8 +333,8 @@ $snapConfig = New-AzSnapshotConfig -SourceResourceId $sourceDisk.Id -Location $s
 **Solution:** Ensure **Disk Snapshot Contributor** role is assigned (or custom role with disk write)
 
 ### Issue: "Forbidden" when uploading logs
-**Cause:** Missing **Storage Blob Data Contributor** role on log storage account  
-**Solution:** Grant Storage Blob Data Contributor at storage account scope
+**Cause:** Missing **Storage Blob Data Contributor** role on the function app resource group  
+**Solution:** Grant Storage Blob Data Contributor at the function app resource group scope
 
 ### Issue: "Subscription ID mismatch" errors
 **Cause:** Context switching issues (addressed in code with Set-SubscriptionContext)  
@@ -339,15 +350,18 @@ $snapConfig = New-AzSnapshotConfig -SourceResourceId $sourceDisk.Id -Location $s
 
 ### ⭐ Recommended Minimal Setup
 
-1. **Target Subscription**:
-   - Role: **Virtual Machine Contributor** (subscription or resource group scope)
-   - Role: **Disk Snapshot Contributor** (subscription or resource group scope)
-   - Role: **Network Reader** (subscription or resource group scope)
-   - Role: **Storage Blob Data Contributor** (log storage account scope)
-
-2. **Source Subscription**:
+1. **Source Subscription**:
    - Role: **Reader** (subscription scope)
-   - Role: **Disk Backup Reader** (subscription scope) - Required for snapshot creation from source disks
+   - Role: **Disk Backup Reader** (subscription scope) — required for snapshot creation from source disks
+
+2. **Target Subscription**:
+   - Role: **Reader** (subscription scope)
+   - Role: **Virtual Machine Contributor** (subscription scope)
+   - Role: **Disk Snapshot Contributor** (subscription scope)
+   - Role: **Network Contributor** (subscription scope)
+
+3. **Function App Resource Group** (e.g. `rg-bolla-umi`):
+   - Role: **Storage Blob Data Contributor** — covers both the hosting storage (`stfn…`) and config/log storage (`stcfg…`)
 
 ### ⚠️ Important Notes
 
