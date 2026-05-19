@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "2160361392763344542"
+      "templateHash": "7577934058144783301"
     }
   },
   "parameters": {
@@ -42,12 +42,19 @@
       "metadata": {
         "description": "Unique token for resource names. Defaults to hash based on subscription/resource group/environment."
       }
+    },
+    "userAssignedIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of pre-created user-assigned managed identity. Must be in format: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}"
+      }
     }
   },
   "variables": {
     "tags": {
       "azd-env-name": "[parameters('environmentName')]"
     },
+    "userAssignedIdentityName": "[last(split(parameters('userAssignedIdentityId'), '/'))]",
     "logAnalyticsName": "[format('log-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "appInsightsName": "[format('appi-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "storageFuncName": "[format('stfn{0}', take(parameters('resourceToken'), 20))]",
@@ -580,7 +587,10 @@
       "tags": "[union(variables('tags'), createObject('azd-service-name', 'drreplication'))]",
       "kind": "functionapp,linux",
       "identity": {
-        "type": "SystemAssigned"
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+        }
       },
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
@@ -593,7 +603,8 @@
               "type": "blobContainer",
               "value": "[format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), '2023-05-01').primaryEndpoints.blob, variables('deploymentContainerName'))]",
               "authentication": {
-                "type": "SystemAssignedIdentity"
+                "type": "UserAssignedIdentity",
+                "userAssignedIdentityResourceId": "[parameters('userAssignedIdentityId')]"
               }
             }
           },
@@ -692,6 +703,10 @@
             {
               "name": "TARGET_ASG_NAME_SUFFIX",
               "value": ""
+            },
+            {
+              "name": "AZURE_CLIENT_ID",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
             }
           ]
         }
@@ -714,14 +729,13 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataOwnerRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), parameters('userAssignedIdentityId'), variables('storageBlobDataOwnerRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataOwnerRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
+        "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
       ]
     },
@@ -729,14 +743,13 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), parameters('userAssignedIdentityId'), variables('storageBlobDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
+        "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
       ]
     },
@@ -744,14 +757,13 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageQueueDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), parameters('userAssignedIdentityId'), variables('storageQueueDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageQueueDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
+        "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
       ]
     },
@@ -759,14 +771,13 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageTableDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), parameters('userAssignedIdentityId'), variables('storageTableDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageTableDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
+        "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
       ]
     },
@@ -774,14 +785,13 @@
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageConfigName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataContributorRoleId'))]",
+      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName')), parameters('userAssignedIdentityId'), variables('storageBlobDataContributorRoleId'))]",
       "properties": {
         "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
+        "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]",
         "principalType": "ServicePrincipal"
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName'))]"
       ]
     }
@@ -801,7 +811,15 @@
     },
     "AZURE_FUNCTION_PRINCIPAL_ID": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]"
+    },
+    "AZURE_USER_ASSIGNED_IDENTITY_ID": {
+      "type": "string",
+      "value": "[parameters('userAssignedIdentityId')]"
+    },
+    "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
     },
     "AZURE_VNET_NAME": {
       "type": "string",
