@@ -536,6 +536,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'AzureWebJobsStorage__queueServiceUri',   value: storageFunc.properties.primaryEndpoints.queue }
         { name: 'AzureWebJobsStorage__tableServiceUri',   value: storageFunc.properties.primaryEndpoints.table }
         { name: 'AzureWebJobsStorage__credential',        value: 'managedidentity' }
+        { name: 'AzureWebJobsStorage__clientId',          value: userAssignedIdentity.properties.clientId }
         { name: 'CSV_STORAGE_CONNECTION__blobServiceUri', value: storageConfig.properties.primaryEndpoints.blob }
         { name: 'CSV_CONTAINER_NAME',                     value: csvContainerName }
         { name: 'VM_PARALLEL_THROTTLE',                   value: '1' }

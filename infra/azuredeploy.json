@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "7577934058144783301"
+      "templateHash": "6778269746675263302"
     }
   },
   "parameters": {
@@ -639,6 +639,10 @@
             {
               "name": "AzureWebJobsStorage__credential",
               "value": "managedidentity"
+            },
+            {
+              "name": "AzureWebJobsStorage__clientId",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
             },
             {
               "name": "CSV_STORAGE_CONNECTION__blobServiceUri",
