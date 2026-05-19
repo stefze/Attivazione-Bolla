@@ -102,8 +102,13 @@ try {
             # List all log blobs for this VM
             $prefix       = "$vmName/"
             $encodedPrefix = [uri]::EscapeDataString($vmName) + '/'
-            $listUri      = "https://$storageAccountName.blob.core.windows.net/$logContainerName?restype=container&comp=list&prefix=$encodedPrefix"
-            $listXml      = [xml](Invoke-RestMethod -Uri $listUri -Headers $storageHeaders -Method GET -ErrorAction Stop)
+            $listUri      = "https://$storageAccountName.blob.core.windows.net/${logContainerName}?restype=container&comp=list&prefix=$encodedPrefix"
+            Write-StatusLog "[DIAG] listUri=[$listUri] storageAccount=[$storageAccountName] logContainer=[$logContainerName]"
+            $listResponse = Invoke-RestMethod -Uri $listUri -Headers $storageHeaders -Method GET -ErrorAction Stop -StatusCodeVariable listStatus -SkipHttpErrorCheck
+            if ($listStatus -ne 200) {
+                throw "Storage list returned HTTP $listStatus for URI [$listUri]: $listResponse"
+            }
+            $listXml = [xml]([string]$listResponse)
             $blobs        = @($listXml.EnumerationResults.Blobs.Blob) | Where-Object { $_ } | ForEach-Object {
                 [pscustomobject]@{
                     Name         = $_.Name
@@ -229,11 +234,16 @@ try {
             }
         }
         catch {
-            Write-StatusLog "Error checking status for VM $vmName : $_" 'ERROR'
+            $errDetail = $_.Exception.Message
+            try {
+                $errBody = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                if ($errBody) { $errDetail += " | Body: $errBody" }
+            } catch {}
+            Write-StatusLog "Error checking status for VM $vmName : $errDetail" 'ERROR'
             $results += @{
                 vmName = $vmName
                 status = 'ERROR'
-                message = $_.Exception.Message
+                message = $errDetail
             }
         }
     }
