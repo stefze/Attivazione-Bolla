@@ -644,6 +644,10 @@ function Invoke-VMReplication {
             [pscustomobject]@{ DiskName = $disk.Name; SnapshotName = $snapName; SnapshotId = $newSnap.Id; Status = 'Created' }
         }
 
+        # Re-establish target subscription context in main thread after parallel processing
+        Write-Log "Re-establishing target subscription context after parallel snapshot creation." -VmName $SourceVmName
+        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+
         $snapshotByDiskName = @{}
         foreach ($r in $snapshotResults) {
             if ($r.Status -eq 'Created') {
