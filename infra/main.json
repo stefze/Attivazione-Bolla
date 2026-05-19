@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.33.93.31351",
-      "templateHash": "4661239725813948606"
+      "templateHash": "13165089098718837549"
     }
   },
   "parameters": {
@@ -24,35 +24,50 @@
       "metadata": {
         "description": "Primary location for all resources."
       }
+    },
+    "prefix": {
+      "type": "string",
+      "defaultValue": "bolla",
+      "minLength": 1,
+      "maxLength": 10,
+      "metadata": {
+        "description": "Prefix for resource names."
+      }
+    },
+    "resourceToken": {
+      "type": "string",
+      "defaultValue": "[toLower(uniqueString(subscription().id, resourceGroup().id, parameters('environmentName')))]",
+      "minLength": 1,
+      "maxLength": 24,
+      "metadata": {
+        "description": "Unique token for resource names. Defaults to hash based on subscription/resource group/environment."
+      }
+    },
+    "userAssignedIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of pre-created user-assigned managed identity. Must be in format: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}"
+      }
     }
   },
   "variables": {
-    "prefix": "bolla",
-    "resourceToken": "[toLower(uniqueString(subscription().id, resourceGroup().id, parameters('environmentName')))]",
     "tags": {
       "azd-env-name": "[parameters('environmentName')]"
     },
-    "logAnalyticsName": "[format('log-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "appInsightsName": "[format('appi-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "storageFuncName": "[format('stfn{0}', take(variables('resourceToken'), 20))]",
-    "storageConfigName": "[format('stcfg{0}', take(variables('resourceToken'), 19))]",
-    "appServicePlanName": "[format('asp-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
-    "functionAppName": "[format('func-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
+    "userAssignedIdentityName": "[last(split(parameters('userAssignedIdentityId'), '/'))]",
+    "logAnalyticsName": "[format('log-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "appInsightsName": "[format('appi-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "storageFuncName": "[format('stfn{0}', take(parameters('resourceToken'), 20))]",
+    "storageConfigName": "[format('stcfg{0}', take(parameters('resourceToken'), 19))]",
+    "appServicePlanName": "[format('asp-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
+    "functionAppName": "[format('func-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "deploymentContainerName": "deploymentpackage",
     "csvContainerName": "dr-configs",
     "logContainerName": "dr-logs",
-    "storageBlobDataOwnerRoleId": "b7e6dc6d-f1e8-4753-8033-0f276bb0955b",
-    "storageBlobDataContributorRoleId": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
-    "storageQueueDataContributorRoleId": "974c5e8b-45b9-4653-ba55-5f855dd0fb88",
-    "storageTableDataContributorRoleId": "0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3",
-    "storageBlobDataReaderRoleId": "2a2b9908-6ea1-4ae2-8e65-a410df84e7d1",
-    "vnetName": "[format('vnet-{0}-{1}', variables('prefix'), variables('resourceToken'))]",
+    "vnetName": "[format('vnet-{0}-{1}', parameters('prefix'), parameters('resourceToken'))]",
     "vnetIntegrationSubnetName": "snet-vnetintegration",
     "privateEndpointSubnetName": "snet-privateendpoints",
-    "privateDnsZoneBlobName": "[format('privatelink.blob.{0}', environment().suffixes.storage)]",
-    "privateDnsZoneTableName": "[format('privatelink.table.{0}', environment().suffixes.storage)]",
-    "privateDnsZoneQueueName": "[format('privatelink.queue.{0}', environment().suffixes.storage)]",
-    "privateDnsZoneFileName": "[format('privatelink.file.{0}', environment().suffixes.storage)]"
+    "privateDnsZoneBlobName": "[format('privatelink.blob.{0}', environment().suffixes.storage)]"
   },
   "resources": [
     {
@@ -76,7 +91,7 @@
                 {
                   "name": "delegation",
                   "properties": {
-                    "serviceName": "Microsoft.Web/serverFarms"
+                    "serviceName": "Microsoft.App/environments"
                   }
                 }
               ],
@@ -114,75 +129,6 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneBlobName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones",
-      "apiVersion": "2020-06-01",
-      "name": "[variables('privateDnsZoneTableName')]",
-      "location": "global",
-      "tags": "[variables('tags')]"
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-      "apiVersion": "2020-06-01",
-      "name": "[format('{0}/{1}', variables('privateDnsZoneTableName'), format('{0}-link', variables('vnetName')))]",
-      "location": "global",
-      "properties": {
-        "registrationEnabled": false,
-        "virtualNetwork": {
-          "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneTableName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones",
-      "apiVersion": "2020-06-01",
-      "name": "[variables('privateDnsZoneQueueName')]",
-      "location": "global",
-      "tags": "[variables('tags')]"
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-      "apiVersion": "2020-06-01",
-      "name": "[format('{0}/{1}', variables('privateDnsZoneQueueName'), format('{0}-link', variables('vnetName')))]",
-      "location": "global",
-      "properties": {
-        "registrationEnabled": false,
-        "virtualNetwork": {
-          "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneQueueName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones",
-      "apiVersion": "2020-06-01",
-      "name": "[variables('privateDnsZoneFileName')]",
-      "location": "global",
-      "tags": "[variables('tags')]"
-    },
-    {
-      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-      "apiVersion": "2020-06-01",
-      "name": "[format('{0}/{1}', variables('privateDnsZoneFileName'), format('{0}-link', variables('vnetName')))]",
-      "location": "global",
-      "properties": {
-        "registrationEnabled": false,
-        "virtualNetwork": {
-          "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-        }
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneFileName'))]",
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
       ]
     },
@@ -362,144 +308,6 @@
     {
       "type": "Microsoft.Network/privateEndpoints",
       "apiVersion": "2023-11-01",
-      "name": "[format('pe-{0}-table', variables('storageFuncName'))]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]",
-      "properties": {
-        "subnet": {
-          "id": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('privateEndpointSubnetName'))]"
-        },
-        "privateLinkServiceConnections": [
-          {
-            "name": "pe-connection",
-            "properties": {
-              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-              "groupIds": [
-                "table"
-              ]
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
-      "apiVersion": "2023-11-01",
-      "name": "[format('{0}/{1}', format('pe-{0}-table', variables('storageFuncName')), 'dnsgroupname')]",
-      "properties": {
-        "privateDnsZoneConfigs": [
-          {
-            "name": "config",
-            "properties": {
-              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneTableName'))]"
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneTableName'))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-table', variables('storageFuncName')))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints",
-      "apiVersion": "2023-11-01",
-      "name": "[format('pe-{0}-queue', variables('storageFuncName'))]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]",
-      "properties": {
-        "subnet": {
-          "id": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('privateEndpointSubnetName'))]"
-        },
-        "privateLinkServiceConnections": [
-          {
-            "name": "pe-connection",
-            "properties": {
-              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-              "groupIds": [
-                "queue"
-              ]
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
-      "apiVersion": "2023-11-01",
-      "name": "[format('{0}/{1}', format('pe-{0}-queue', variables('storageFuncName')), 'dnsgroupname')]",
-      "properties": {
-        "privateDnsZoneConfigs": [
-          {
-            "name": "config",
-            "properties": {
-              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneQueueName'))]"
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneQueueName'))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-queue', variables('storageFuncName')))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints",
-      "apiVersion": "2023-11-01",
-      "name": "[format('pe-{0}-file', variables('storageFuncName'))]",
-      "location": "[parameters('location')]",
-      "tags": "[variables('tags')]",
-      "properties": {
-        "subnet": {
-          "id": "[format('{0}/subnets/{1}', resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), variables('privateEndpointSubnetName'))]"
-        },
-        "privateLinkServiceConnections": [
-          {
-            "name": "pe-connection",
-            "properties": {
-              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-              "groupIds": [
-                "file"
-              ]
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
-      "apiVersion": "2023-11-01",
-      "name": "[format('{0}/{1}', format('pe-{0}-file', variables('storageFuncName')), 'dnsgroupname')]",
-      "properties": {
-        "privateDnsZoneConfigs": [
-          {
-            "name": "config",
-            "properties": {
-              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneFileName'))]"
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneFileName'))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-file', variables('storageFuncName')))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Network/privateEndpoints",
-      "apiVersion": "2023-11-01",
       "name": "[format('pe-{0}-blob', variables('storageConfigName'))]",
       "location": "[parameters('location')]",
       "tags": "[variables('tags')]",
@@ -565,7 +373,10 @@
       "tags": "[union(variables('tags'), createObject('azd-service-name', 'drreplication'))]",
       "kind": "functionapp,linux",
       "identity": {
-        "type": "SystemAssigned"
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('userAssignedIdentityId'))]": {}
+        }
       },
       "properties": {
         "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
@@ -578,7 +389,8 @@
               "type": "blobContainer",
               "value": "[format('{0}{1}', reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), '2023-05-01').primaryEndpoints.blob, variables('deploymentContainerName'))]",
               "authentication": {
-                "type": "SystemAssignedIdentity"
+                "type": "UserAssignedIdentity",
+                "userAssignedIdentityResourceId": "[parameters('userAssignedIdentityId')]"
               }
             }
           },
@@ -603,16 +415,12 @@
               "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), '2023-05-01').primaryEndpoints.blob]"
             },
             {
-              "name": "AzureWebJobsStorage__queueServiceUri",
-              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), '2023-05-01').primaryEndpoints.queue]"
-            },
-            {
-              "name": "AzureWebJobsStorage__tableServiceUri",
-              "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), '2023-05-01').primaryEndpoints.table]"
-            },
-            {
               "name": "AzureWebJobsStorage__credential",
               "value": "managedidentity"
+            },
+            {
+              "name": "AzureWebJobsStorage__clientId",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
             },
             {
               "name": "CSV_STORAGE_CONNECTION__blobServiceUri",
@@ -677,6 +485,10 @@
             {
               "name": "TARGET_ASG_NAME_SUFFIX",
               "value": ""
+            },
+            {
+              "name": "AZURE_CLIENT_ID",
+              "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
             }
           ]
         }
@@ -687,87 +499,9 @@
         "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageFuncName'), 'default', variables('deploymentContainerName'))]",
         "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', variables('storageConfigName')))]",
         "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-blob', variables('storageFuncName')))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-file', variables('storageFuncName')))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-queue', variables('storageFuncName')))]",
-        "[resourceId('Microsoft.Network/privateEndpoints', format('pe-{0}-table', variables('storageFuncName')))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]",
         "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataOwnerRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataOwnerRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataContributorRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageQueueDataContributorRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageQueueDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageFuncName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageTableDataContributorRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageTableDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageFuncName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Authorization/roleAssignments",
-      "apiVersion": "2022-04-01",
-      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', variables('storageConfigName'))]",
-      "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('storageBlobDataContributorRoleId'))]",
-      "properties": {
-        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('storageBlobDataContributorRoleId'))]",
-        "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]",
-        "principalType": "ServicePrincipal"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageConfigName'))]"
       ]
     }
   ],
@@ -786,7 +520,15 @@
     },
     "AZURE_FUNCTION_PRINCIPAL_ID": {
       "type": "string",
-      "value": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'full').identity.principalId]"
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').principalId]"
+    },
+    "AZURE_USER_ASSIGNED_IDENTITY_ID": {
+      "type": "string",
+      "value": "[parameters('userAssignedIdentityId')]"
+    },
+    "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', split(parameters('userAssignedIdentityId'), '/')[2], split(parameters('userAssignedIdentityId'), '/')[4]), 'Microsoft.ManagedIdentity/userAssignedIdentities', variables('userAssignedIdentityName')), '2023-01-31').clientId]"
     },
     "AZURE_VNET_NAME": {
       "type": "string",
