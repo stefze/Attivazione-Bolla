@@ -593,14 +593,6 @@ function Invoke-VMReplication {
                 }
             }
             function _norm { param([string]$v); if ([string]::IsNullOrWhiteSpace($v)) { return '' }; return $v.Trim().ToLowerInvariant() }
-            function _arrEq {
-                param([string[]]$a, [string[]]$b)
-                $na = @($a | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Sort-Object -Unique)
-                $nb = @($b | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Sort-Object -Unique)
-                if ($na.Count -ne $nb.Count) { return $false }
-                for ($i = 0; $i -lt $na.Count; $i++) { if ($na[$i] -ne $nb[$i]) { return $false } }
-                return $true
-            }
 
             Import-Module Az.Accounts -ErrorAction Stop
             Import-Module Az.Compute  -ErrorAction Stop
@@ -624,20 +616,20 @@ function Invoke-VMReplication {
             $snapName = "$snapPrefix$($disk.Name)"
             $existing = Get-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -ErrorAction SilentlyContinue
             if ($existing) {
+                # Snapshots are always regional (no zones), verify source disk and DES only
                 $ok = (_norm $existing.CreationData.SourceResourceId) -eq (_norm $disk.SourceDiskId) -and
-                      (_norm $existing.Encryption.DiskEncryptionSetId) -eq (_norm $tDesId)          -and
-                      (_arrEq @($existing.Zones) @($disk.Zones))
-                if (-not $ok) { throw "Snapshot '$snapName' exists but configuration does not match (source disk, DES, or zones)." }
+                      (_norm $existing.Encryption.DiskEncryptionSetId) -eq (_norm $tDesId)
+                if (-not $ok) { throw "Snapshot '$snapName' exists but configuration does not match (source disk or DES)." }
                 return [pscustomobject]@{ DiskName = $disk.Name; SnapshotName = $snapName; SnapshotId = $existing.Id; Status = 'Reused' }
             }
 
+            # Snapshots are always regional, zones are NOT supported
             $cfgArgs = @{
                 Location            = $tLocation
                 CreateOption        = 'Copy'
                 SourceResourceId    = $disk.SourceDiskId
                 DiskEncryptionSetId = $tDesId
             }
-            if ($disk.Zones -and $disk.Zones.Count -gt 0) { $cfgArgs['Zone'] = @($disk.Zones) }
 
             $cfg     = _retry -op "New-AzSnapshotConfig $snapName" -sb { New-AzSnapshotConfig @cfgArgs -ErrorAction Stop }
             $newSnap = _retry -op "New-AzSnapshot $snapName"       -sb { New-AzSnapshot -ResourceGroupName $tSnapRg -SnapshotName $snapName -Snapshot $cfg -ErrorAction Stop }
