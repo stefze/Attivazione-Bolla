@@ -780,6 +780,15 @@ function Invoke-VMReplication {
             }
         }
 
+        # Re-establish target subscription context before NIC creation
+        Write-Log "Re-establishing target subscription context before NIC creation." -VmName $SourceVmName
+        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        $currentCtx = Get-AzContext
+        Write-Log "Context before NIC creation verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Context mismatch before NIC creation! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
+
         # NIC
         $targetNic = Get-AzNetworkInterface -ResourceGroupName $targetVmRg -Name $targetNicName -ErrorAction SilentlyContinue
         if ($null -eq $targetNic) {
@@ -845,6 +854,15 @@ function Invoke-VMReplication {
             Write-Log "Reused VM '$targetVmName'." -VmName $SourceVmName
         }
         else {
+            # Re-establish target subscription context before VM creation
+            Write-Log "Re-establishing target subscription context before VM creation." -VmName $SourceVmName
+            Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+            $currentCtx = Get-AzContext
+            Write-Log "Context before VM creation verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+            if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+                throw "Context mismatch before VM creation! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+            }
+            
             $vmConfig = New-AzVMConfig -VMName $targetVmName -VMSize $sourceVm.HardwareProfile.VmSize -ErrorAction Stop
             $vmConfig = Add-AzVMNetworkInterface -VM $vmConfig -Id $targetNic.Id -Primary -ErrorAction Stop
 
