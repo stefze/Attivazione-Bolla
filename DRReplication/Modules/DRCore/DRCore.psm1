@@ -348,9 +348,12 @@ function Invoke-VMReplication {
         $currentStage = 'A'
         Write-Log 'Stage A: Discovering source VM configuration.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $sourceSub.Id -FriendlyName $sourceSub.Name
+        $activeCtx = Get-AzContext
+        Write-Log "[DIAG] Active context after Set-SubscriptionContext: Sub='$($activeCtx.Subscription.Id)' ($($activeCtx.Subscription.Name)) Tenant='$($activeCtx.Tenant.Id)'" -VmName $SourceVmName
 
+        $sourceCtx = $activeCtx
         $sourceVm = Invoke-WithRetry -Operation "Get-AzVM $SourceVmName" -ScriptBlock {
-            Get-AzVM -ResourceGroupName $SourceResourceGroup -Name $SourceVmName -ErrorAction Stop
+            Get-AzVM -ResourceGroupName $SourceResourceGroup -Name $SourceVmName -DefaultProfile $sourceCtx -ErrorAction Stop
         }
         $result.TargetVmName = $sourceVm.Name
 
@@ -366,7 +369,7 @@ function Invoke-VMReplication {
         $sourceNicName = Get-LastNameFromId  -ResourceId $nicRef.Id
 
         $sourceNic = Invoke-WithRetry -Operation "Get-AzNetworkInterface $sourceNicName" -ScriptBlock {
-            Get-AzNetworkInterface -ResourceGroupName $sourceNicRg -Name $sourceNicName -ErrorAction Stop
+            Get-AzNetworkInterface -ResourceGroupName $sourceNicRg -Name $sourceNicName -DefaultProfile $sourceCtx -ErrorAction Stop
         }
 
         $sourceIpConfig = $sourceNic.IpConfigurations | Where-Object { $_.Primary } | Select-Object -First 1
