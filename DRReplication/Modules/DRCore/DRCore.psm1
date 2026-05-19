@@ -186,18 +186,6 @@ function Upload-StageLog {
     }
 }
 
-function Initialize-ResourceGroup {
-    param([string]$Name, [string]$Location)
-    $rg = Get-AzResourceGroup -Name $Name -ErrorAction SilentlyContinue
-    if ($null -eq $rg) {
-        Write-Log "Resource group '$Name' not found. Creating in '$Location'."
-        $rg = Invoke-WithRetry -Operation "New-AzResourceGroup $Name" -ScriptBlock {
-            New-AzResourceGroup -Name $Name -Location $Location -ErrorAction Stop
-        }
-    }
-    return $rg
-}
-
 function Select-BackendPool {
     param(
         [Parameter(Mandatory = $true)]  [object]   $LoadBalancer,
@@ -562,9 +550,7 @@ function Invoke-VMReplication {
         if ($null -eq $des) { throw "Target DES '$targetDesName' not found in RG '$targetDesRg'." }
         
         $targetLocation = $des.Location
-        Write-Log "Target location: $targetLocation (from DES)" -VmName $SourceVmName
-
-        Initialize-ResourceGroup -Name $targetSnapDiskRg -Location $targetLocation | Out-Null
+        Write-Log "Target location: $targetLocation (from DES). Target RG: '$targetSnapDiskRg' (must pre-exist)." -VmName $SourceVmName
 
         # Parallel snapshot creation — each iteration runs in its own runspace
         $snapshotResults = $diskInfos | ForEach-Object -ThrottleLimit $DiskParallelThrottle -Parallel {
@@ -745,8 +731,8 @@ function Invoke-VMReplication {
             throw "Stage D context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
         }
 
-        # Initialize target VM resource group (create if doesn't exist)
-        Initialize-ResourceGroup -Name $targetVmRg -Location $targetLocation | Out-Null
+        # Target VM resource group must pre-exist (operations will fail if it doesn't)
+        Write-Log "Target VM RG: '$targetVmRg' (must pre-exist in subscription '$($targetSub.Name)')." -VmName $SourceVmName
 
         # Re-establish target subscription context before VNet lookup
         Write-Log "Re-establishing target subscription context before VNet lookup." -VmName $SourceVmName
