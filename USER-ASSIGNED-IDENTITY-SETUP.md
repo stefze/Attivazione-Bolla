@@ -102,11 +102,20 @@ az role assignment create \
 ```bash
 SOURCE_SUBSCRIPTION_ID="<YOUR_SOURCE_SUBSCRIPTION_ID>"
 
+# Reader role for VM and resource metadata
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Reader" \
   --scope "/subscriptions/$SOURCE_SUBSCRIPTION_ID"
+
+# Disk Backup Reader role for snapshot creation from source disks
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Disk Backup Reader" \
+  --scope "/subscriptions/$SOURCE_SUBSCRIPTION_ID"
 ```
+
+> **Important**: The Disk Backup Reader role is required for Stage B snapshot creation. Without it, the replication will fail with "AuthorizationFailed" when attempting to create snapshots from source disks.
 
 ### Verify Role Assignments
 
