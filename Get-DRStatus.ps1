@@ -14,7 +14,7 @@
     The Azure Function URL with code for Get-DRStatus endpoint
 
 .PARAMETER CsvBlobPath
-    Optional path to CSV file in blob storage to filter status (e.g., "prod/production-config.csv")
+    Optional path to CSV file in blob storage to filter status (e.g., "production-config.csv")
 
 .PARAMETER Watch
     Continuously poll for status updates every N seconds (default: 30)
@@ -27,7 +27,7 @@
     
 .EXAMPLE
     # Query status for specific CSV file
-    .\Get-DRStatus.ps1 -FunctionUrl "https://..." -CsvBlobPath "prod/production-config.csv"
+    .\Get-DRStatus.ps1 -FunctionUrl "https://..." -CsvBlobPath "production-config.csv"
     
 .EXAMPLE
     # Watch mode - continuous polling every 30 seconds
@@ -78,67 +78,68 @@ function Show-DRStatus {
         Write-Host ""
     }
     
-    if ($StatusData.latestInvocation) {
-        $inv = $StatusData.latestInvocation
-        Write-Host "Latest Invocation:" -ForegroundColor White
-        Write-Host "  ID:        $($inv.invocationId)" -ForegroundColor Gray
-        Write-Host "  Started:   $($inv.startTime)" -ForegroundColor Gray
-        Write-Host "  CSV:       $($inv.csvBlobPath)" -ForegroundColor Gray
-        Write-Host ""
-    }
-    
-    if ($StatusData.overallStatus) {
-        $status = $StatusData.overallStatus
-        $statusColor = Get-StatusColor -Status $status
-        Write-Host "Overall Status: " -NoNewline
-        Write-Host $status -ForegroundColor $statusColor
-        Write-Host ""
-    }
-    
-    if ($StatusData.progress -ne $null) {
-        $progressPercent = [math]::Round($StatusData.progress, 2)
-        $progressBar = ""
-        $barLength = 50
-        $filled = [math]::Floor($progressPercent / 100 * $barLength)
-        $progressBar = ("█" * $filled).PadRight($barLength, "░")
-        
-        Write-Host "Progress: " -NoNewline
-        Write-Host "[$progressBar] " -NoNewline -ForegroundColor Cyan
-        Write-Host "$progressPercent%" -ForegroundColor White
-        Write-Host ""
-    }
-    
-    if ($StatusData.completedStages -and $StatusData.completedStages.Count -gt 0) {
-        Write-Host "✓ Completed Stages:" -ForegroundColor Green
-        foreach ($stage in $StatusData.completedStages) {
-            Write-Host "  • $stage" -ForegroundColor Green
-        }
-        Write-Host ""
-    }
-    
-    if ($StatusData.failedStages -and $StatusData.failedStages.Count -gt 0) {
-        Write-Host "✗ Failed Stages:" -ForegroundColor Red
-        foreach ($failure in $StatusData.failedStages) {
-            Write-Host "  • $failure" -ForegroundColor Red
-        }
-        Write-Host ""
-    }
-    
-    if ($StatusData.vmsInProgress -and $StatusData.vmsInProgress.Count -gt 0) {
-        Write-Host "⟳ VMs In Progress:" -ForegroundColor Yellow
-        foreach ($vm in $StatusData.vmsInProgress) {
-            Write-Host "  • $vm" -ForegroundColor Yellow
-        }
+    if ($StatusData.checkedAt) {
+        Write-Host "Checked At: " -NoNewline -ForegroundColor Gray
+        Write-Host $StatusData.checkedAt -ForegroundColor White
         Write-Host ""
     }
     
     if ($StatusData.summary) {
         Write-Host "Summary:" -ForegroundColor White
-        Write-Host "  Total VMs:      $($StatusData.summary.totalVMs)" -ForegroundColor Gray
-        Write-Host "  Completed:      $($StatusData.summary.completedVMs)" -ForegroundColor Green
-        Write-Host "  Failed:         $($StatusData.summary.failedVMs)" -ForegroundColor Red
-        Write-Host "  In Progress:    $($StatusData.summary.inProgressVMs)" -ForegroundColor Yellow
+        Write-Host "  Total VMs:      $($StatusData.vmCount ?? 0)" -ForegroundColor Gray
+        Write-Host "  Succeeded:      $($StatusData.summary.succeeded ?? 0)" -ForegroundColor Green
+        Write-Host "  Failed:         $($StatusData.summary.failed ?? 0)" -ForegroundColor Red
+        Write-Host "  In Progress:    $($StatusData.summary.inProgress ?? 0)" -ForegroundColor Yellow
+        Write-Host "  Errors:         $($StatusData.summary.error ?? 0)" -ForegroundColor Red
+        Write-Host "  Unknown:        $($StatusData.summary.unknown ?? 0)" -ForegroundColor DarkGray
         Write-Host ""
+        
+        # Calculate progress
+        $total = $StatusData.vmCount ?? 0
+        if ($total -gt 0) {
+            $completed = ($StatusData.summary.succeeded ?? 0) + ($StatusData.summary.failed ?? 0)
+            $progressPercent = [math]::Round(($completed / $total) * 100, 2)
+            $progressBar = ""
+            $barLength = 50
+            $filled = [math]::Floor($progressPercent / 100 * $barLength)
+            $progressBar = ("█" * $filled).PadRight($barLength, "░")
+            
+            Write-Host "Progress: " -NoNewline
+            Write-Host "[$progressBar] " -NoNewline -ForegroundColor Cyan
+            Write-Host "$progressPercent%" -ForegroundColor White
+            Write-Host ""
+        }
+    }
+    
+    if ($StatusData.results -and $StatusData.results.Count -gt 0) {
+        # Group by status
+        $succeeded = $StatusData.results | Where-Object { $_.status -eq 'SUCCEEDED' }
+        $failed = $StatusData.results | Where-Object { $_.status -eq 'FAILED' }
+        $inProgress = $StatusData.results | Where-Object { $_.status -eq 'IN_PROGRESS' }
+        
+        if ($succeeded -and $succeeded.Count -gt 0) {
+            Write-Host "✓ Succeeded VMs:" -ForegroundColor Green
+            foreach ($vm in $succeeded) {
+                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Green
+            }
+            Write-Host ""
+        }
+        
+        if ($failed -and $failed.Count -gt 0) {
+            Write-Host "✗ Failed VMs:" -ForegroundColor Red
+            foreach ($vm in $failed) {
+                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Red
+            }
+            Write-Host ""
+        }
+        
+        if ($inProgress -and $inProgress.Count -gt 0) {
+            Write-Host "⟳ VMs In Progress:" -ForegroundColor Yellow
+            foreach ($vm in $inProgress) {
+                Write-Host "  • $($vm.vmName) - Stage: $($vm.completedStage)" -ForegroundColor Yellow
+            }
+            Write-Host ""
+        }
     }
     
     Write-Host "───────────────────────────────────────────────────────────" -ForegroundColor DarkGray

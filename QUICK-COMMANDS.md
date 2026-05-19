@@ -12,7 +12,7 @@ $statusUrl = "https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Get-DRStatus?cod
 
 ```powershell
 # Start DR replication in background (returns immediately)
-.\Invoke-DRReplicationAsync.ps1 -FunctionUrl $functionUrl -CsvBlobPath "prod/production-config.csv"
+.\Invoke-DRReplicationAsync.ps1 -FunctionUrl $functionUrl -CsvBlobPath "production-config.csv"
 
 # Check job status
 Get-Job
@@ -33,7 +33,7 @@ $job = Start-ThreadJob -ArgumentList $functionUrl -ScriptBlock {
     Invoke-RestMethod -Uri $Uri `
                       -Method POST `
                       -ContentType "application/json" `
-                      -Body '{"csvBlobPath":"prod/production-config.csv"}'
+                      -Body '{"csvBlobPath":"production-config.csv"}'
 }
 Write-Host "✓ Job started (ID: $($job.Id))"
 ```
@@ -42,7 +42,7 @@ Write-Host "✓ Job started (ID: $($job.Id))"
 
 ```powershell
 # Block until completion (can take several minutes)
-$body = '{"csvBlobPath":"prod/production-config.csv"}'
+$body = '{"csvBlobPath":"production-config.csv"}'
 $resp = Invoke-RestMethod -Uri $functionUrl -Method POST -ContentType "application/json" -Body $body
 $resp | ConvertTo-Json
 ```
@@ -54,13 +54,13 @@ $resp | ConvertTo-Json
 .\Get-DRStatus.ps1 -FunctionUrl $statusUrl
 
 # Query status for specific CSV file
-.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "prod/production-config.csv"
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "production-config.csv"
 
 # Watch mode - continuous polling every 30 seconds
 .\Get-DRStatus.ps1 -FunctionUrl $statusUrl -Watch
 
 # Watch mode for specific CSV with custom interval
-.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "prod/production-config.csv" -Watch -WatchInterval 10
+.\Get-DRStatus.ps1 -FunctionUrl $statusUrl -CsvBlobPath "production-config.csv" -Watch -WatchInterval 10
 ```
 
 ## Manual Status Check

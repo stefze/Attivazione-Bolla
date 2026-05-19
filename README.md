@@ -580,7 +580,7 @@ GET/POST https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Get-DRStatus?code=<FU
 Content-Type: application/json
 
 {
-  "csvBlobPath": "prod/production-config.csv"
+  "csvBlobPath": "production-config.csv"
 }
 ```
 
@@ -632,7 +632,7 @@ Content-Type: application/json
 
 ```powershell
 $uri  = "https://<FUNCTION_APP_NAME>.azurewebsites.net/api/Get-DRStatus?code=<KEY>"
-$body = '{"csvBlobPath":"prod/production-config.csv"}'
+$body = '{"csvBlobPath":"production-config.csv"}'
 $resp = Invoke-RestMethod -Uri $uri -Method POST -ContentType "application/json" -Body $body
 
 Write-Host "`nSummary:"

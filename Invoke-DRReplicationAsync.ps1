@@ -10,10 +10,10 @@
     The Azure Function URL with code (optional, uses default if not specified)
 
 .PARAMETER CsvBlobPath
-    Path to the CSV file in blob storage (e.g., "prod/production-config.csv")
+    Path to the CSV file in blob storage (e.g., "production-config.csv")
 
 .EXAMPLE
-    .\Invoke-DRReplicationAsync.ps1 -FunctionUrl "https://<FUNCTION_APP>.azurewebsites.net/api/Invoke-DRReplication?code=<CODE>" -CsvBlobPath "prod/production-config.csv"
+    .\Invoke-DRReplicationAsync.ps1 -FunctionUrl "https://<FUNCTION_APP>.azurewebsites.net/api/Invoke-DRReplication?code=<CODE>" -CsvBlobPath "production-config.csv"
     
 .EXAMPLE
     # Check job status
