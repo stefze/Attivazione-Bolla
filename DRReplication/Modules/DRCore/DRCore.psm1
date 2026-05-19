@@ -748,6 +748,15 @@ function Invoke-VMReplication {
         # Initialize target VM resource group (create if doesn't exist)
         Initialize-ResourceGroup -Name $targetVmRg -Location $targetLocation | Out-Null
 
+        # Re-establish target subscription context before VNet lookup
+        Write-Log "Re-establishing target subscription context before VNet lookup." -VmName $SourceVmName
+        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        $currentCtx = Get-AzContext
+        Write-Log "Context before VNet lookup verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Context mismatch before VNet lookup! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
+
         $targetVnet = Invoke-WithRetry -Operation "Get-AzVirtualNetwork $targetVnetName" -ScriptBlock {
             Get-AzVirtualNetwork -ResourceGroupName $targetVnetRg -Name $targetVnetName -ErrorAction Stop
         }
@@ -755,6 +764,9 @@ function Invoke-VMReplication {
         if ($null -eq $targetSubnet) {
             throw "Subnet '$targetSubnetName' not found in VNet '$targetVnetName'. Available: $($targetVnet.Subnets.Name -join ', ')."
         }
+        
+        # Log the subnet ID to verify it contains correct subscription
+        Write-Log "Target subnet ID: $($targetSubnet.Id)" -VmName $SourceVmName
 
         $targetVmName  = [string]$sourceVm.Name
         $targetNicName = "$targetVmName-nic"
