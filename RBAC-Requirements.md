@@ -16,10 +16,11 @@ The managed identity needs permissions to create and manage DR infrastructure in
 
 ### Recommended: Multiple Built-in Roles
 
-The **simplest and recommended approach** is to assign **two built-in roles** at the **target subscription** scope:
+The **simplest and recommended approach** is to assign **three built-in roles** at the **target subscription** scope:
 
-1. **Virtual Machine Contributor** - for VMs and NICs
+1. **Virtual Machine Contributor** - for VMs and NICs (create/update)
 2. **Disk Snapshot Contributor** - for snapshots and disks
+3. **Network Reader** - for reading VNets, subnets, and ASGs
 
 ```bash
 # Get the Function App's managed identity principal ID
@@ -40,13 +41,18 @@ az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "Disk Snapshot Contributor" \
   --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
+
+# Assign Network Reader role (for reading VNets, subnets, ASGs)
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Network Reader" \
+  --scope "/subscriptions/$TARGET_SUBSCRIPTION_ID"
 ```
 
 **What Virtual Machine Contributor provides:**
-- ✅ Create/read/update Virtual Machines
-- ✅ Create/read/update Network Interfaces
-- ✅ Read Virtual Networks, Subnets, and Application Security Groups
-- ✅ Read Load Balancers and attach to backend pools
+- ✅ Create/update/delete Virtual Machines
+- ✅ Create/update/delete Network Interfaces
+- ✅ Join subnets and load balancer backend pools
 - ✅ Manage VM boot diagnostics
 
 **What Disk Snapshot Contributor provides:**
@@ -54,7 +60,13 @@ az role assignment create \
 - ✅ Create/read/delete Disks
 - ✅ Read Disk Encryption Sets
 
-> **Why two roles?** Virtual Machine Contributor does NOT include permissions for disk and snapshot operations. Microsoft separates VM lifecycle management from disk/snapshot management for security isolation.
+**What Network Reader provides:**
+- ✅ Read Virtual Networks and Subnets
+- ✅ Read Application Security Groups
+- ✅ Read Load Balancers
+- ✅ Read NSGs and other network resources
+
+> **Why three roles?** Virtual Machine Contributor can CREATE NICs and JOIN subnets/LB pools, but does NOT include permissions to READ VNets, subnets, or ASGs. Network Reader provides the necessary read access to discover and reference network resources.
 
 **What these roles do NOT provide:**
 - ❌ Write to Storage Account (required for logging)
@@ -93,7 +105,7 @@ If organizational policy requires **least privilege access** or you want to avoi
 ```json
 {
   "Name": "DR Replication Target Operator",
-  "Description": "Minimum permissions for DR replication in target subscription - combines VM and Disk/Snapshot operations",
+  "Description": "Minimum permissions for DR replication in target subscription - combines VM, Disk/Snapshot, and Network read operations",
   "Actions": [
     "Microsoft.Compute/disks/read",
     "Microsoft.Compute/disks/write",
@@ -114,6 +126,7 @@ If organizational policy requires **least privilege access** or you want to avoi
     "Microsoft.Network/loadBalancers/read",
     "Microsoft.Network/loadBalancers/backendAddressPools/read",
     "Microsoft.Network/loadBalancers/backendAddressPools/join/action",
+    "Microsoft.Network/networkSecurityGroups/read",
     "Microsoft.Resources/subscriptions/resourceGroups/read"
   ],
   "NotActions": [],
@@ -131,7 +144,7 @@ If organizational policy requires **least privilege access** or you want to avoi
 # Create custom role
 az role definition create --role-definition @dr-target-role.json
 
-# Assign custom role (replaces both Virtual Machine Contributor + Disk Snapshot Contributor)
+# Assign custom role (replaces Virtual Machine Contributor + Disk Snapshot Contributor + Network Reader)
 az role assignment create \
   --assignee $PRINCIPAL_ID \
   --role "DR Replication Target Operator" \
@@ -191,23 +204,23 @@ az role assignment create \
 - `Microsoft.Compute/diskEncryptionSets/read`
 
 ### Stage D: Create NIC and VM (Target Subscription)
-- `Microsoft.Network/virtualNetworks/read`
-- `Microsoft.Network/virtualNetworks/subnets/read`
-- `Microsoft.Network/virtualNetworks/subnets/join/action`
-- `Microsoft.Network/applicationSecurityGroups/read`
-- `Microsoft.Network/networkInterfaces/read`
-- `Microsoft.Network/networkInterfaces/write`
-- `Microsoft.Network/networkInterfaces/join/action`
-- `Microsoft.Compute/virtualMachines/read`
-- `Microsoft.Compute/virtualMachines/write`
-- `Microsoft.Compute/disks/read`
+- `Microsoft.Network/virtualNetworks/read` ← **Network Reader**
+- `Microsoft.Network/virtualNetworks/subnets/read` ← **Network Reader**
+- `Microsoft.Network/virtualNetworks/subnets/join/action` ← Virtual Machine Contributor
+- `Microsoft.Network/applicationSecurityGroups/read` ← **Network Reader**
+- `Microsoft.Network/networkInterfaces/read` ← Virtual Machine Contributor
+- `Microsoft.Network/networkInterfaces/write` ← Virtual Machine Contributor
+- `Microsoft.Network/networkInterfaces/join/action` ← Virtual Machine Contributor
+- `Microsoft.Compute/virtualMachines/read` ← Virtual Machine Contributor
+- `Microsoft.Compute/virtualMachines/write` ← Virtual Machine Contributor
+- `Microsoft.Compute/disks/read` ← Disk Snapshot Contributor
 
 ### Stage E: Attach to Load Balancer (Target Subscription)
-- `Microsoft.Network/loadBalancers/read`
-- `Microsoft.Network/loadBalancers/backendAddressPools/read`
-- `Microsoft.Network/loadBalancers/backendAddressPools/join/action`
-- `Microsoft.Network/networkInterfaces/read`
-- `Microsoft.Network/networkInterfaces/write`
+- `Microsoft.Network/loadBalancers/read` ← **Network Reader**
+- `Microsoft.Network/loadBalancers/backendAddressPools/read` ← **Network Reader**
+- `Microsoft.Network/loadBalancers/backendAddressPools/join/action` ← Virtual Machine Contributor
+- `Microsoft.Network/networkInterfaces/read` ← Virtual Machine Contributor
+- `Microsoft.Network/networkInterfaces/write` ← Virtual Machine Contributor
 
 ### Logging (All Stages - Target Subscription)
 - `Microsoft.Storage/storageAccounts/blobServices/containers/read`
@@ -251,6 +264,14 @@ Get-AzStorageContainer -Context $ctx
 
 ## 🚨 Common Issues and Solutions
 
+### Issue: "AuthorizationFailed" or "ResourceNotFound" when reading VNet/Subnet
+**Cause:** Missing `Microsoft.Network/virtualNetworks/read` or `subnets/read` permission  
+**Solution:** Ensure **Network Reader** role is assigned (or custom role with network read permissions)
+
+### Issue: "AuthorizationFailed" when reading Application Security Groups
+**Cause:** Missing `Microsoft.Network/applicationSecurityGroups/read` permission  
+**Solution:** Ensure **Network Reader** role is assigned (or custom role with ASG read)
+
 ### Issue: "AuthorizationFailed" during snapshot creation
 **Cause:** Missing `Microsoft.Compute/snapshots/write` permission  
 **Solution:** Ensure **Disk Snapshot Contributor** role is assigned (or custom role with snapshot write)
@@ -280,6 +301,7 @@ Get-AzStorageContainer -Context $ctx
 1. **Target Subscription (identity-dr)**:
    - Role: **Virtual Machine Contributor** (subscription or resource group scope)
    - Role: **Disk Snapshot Contributor** (subscription or resource group scope)
+   - Role: **Network Reader** (subscription or resource group scope)
    - Role: **Storage Blob Data Contributor** (log storage account scope)
 
 2. **Source Subscription (Identity)**:
