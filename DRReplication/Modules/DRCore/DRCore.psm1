@@ -560,6 +560,7 @@ function Invoke-VMReplication {
             $tLocation      = $using:targetLocation
             $tDesId         = $using:des.Id
             $snapPrefix     = $using:SnapshotNamePrefix
+            $clientId       = $env:AZURE_CLIENT_ID
             $ErrorActionPreference = 'Stop'
 
             # Inline helpers (not available across runspace boundary)
@@ -584,8 +585,11 @@ function Invoke-VMReplication {
             Import-Module Az.Compute  -ErrorAction Stop
             if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
                 Disable-AzContextAutosave -Scope Process | Out-Null
-                _retry -op "Connect-AzAccount with managed identity" -sb {
-                    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                _retry -op "Connect-AzAccount with user-assigned managed identity" -sb {
+                    if ([string]::IsNullOrWhiteSpace($clientId)) {
+                        throw "AZURE_CLIENT_ID not set for user-assigned managed identity"
+                    }
+                    Connect-AzAccount -Identity -AccountId $clientId -ErrorAction Stop | Out-Null
                 }
             }
             

@@ -49,9 +49,20 @@ try {
     }
 
     # Authenticate
-    Write-StatusLog "Authenticating with managed identity..."
+    Write-StatusLog "Authenticating with user-assigned managed identity..."
     Disable-AzContextAutosave -Scope Process | Out-Null
-    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+    
+    $clientId = $env:AZURE_CLIENT_ID
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        Write-StatusLog "AZURE_CLIENT_ID environment variable not set" 'ERROR'
+        Push-OutputBinding -Name Response -Value ([HttpResponseContext]@{
+            StatusCode = [HttpStatusCode]::InternalServerError
+            Body       = @{ error = "AZURE_CLIENT_ID not configured for user-assigned managed identity" } | ConvertTo-Json
+        })
+        return
+    }
+    
+    Connect-AzAccount -Identity -AccountId $clientId -ErrorAction Stop | Out-Null
     Write-StatusLog "Authentication successful"
 
     # Parse storage account name from URI

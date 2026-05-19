@@ -25,10 +25,16 @@ param prefix string = 'bolla'
 @description('Unique token for resource names. Defaults to hash based on subscription/resource group/environment.')
 param resourceToken string = toLower(uniqueString(subscription().id, resourceGroup().id, environmentName))
 
+@description('Resource ID of pre-created user-assigned managed identity. Must be in format: /subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.ManagedIdentity/userAssignedIdentities/{identityName}')
+param userAssignedIdentityId string
+
 // ---------------------------------------------------------------------------
 // Variables
 // ---------------------------------------------------------------------------
 var tags          = { 'azd-env-name': environmentName }
+
+// Extract user-assigned identity details
+var userAssignedIdentityName = last(split(userAssignedIdentityId, '/'))
 
 var logAnalyticsName        = 'log-${prefix}-${resourceToken}'
 var appInsightsName         = 'appi-${prefix}-${resourceToken}'
@@ -474,7 +480,16 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 }
 
 // ---------------------------------------------------------------------------
-// Function App — PowerShell 7.4, system-assigned MI
+// Reference to existing user-assigned managed identity
+// ---------------------------------------------------------------------------
+
+resource userAssignedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  name: userAssignedIdentityName
+  scope: resourceGroup(split(userAssignedIdentityId, '/')[2], split(userAssignedIdentityId, '/')[4])
+}
+
+// ---------------------------------------------------------------------------
+// Function App — PowerShell 7.4, user-assigned MI
 // ---------------------------------------------------------------------------
 
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
@@ -482,7 +497,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   location: location
   tags:     union(tags, { 'azd-service-name': 'drreplication' })
   kind:     'functionapp,linux'
-  identity: { type: 'SystemAssigned' }
+  identity: { 
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${userAssignedIdentityId}': {}
+    }
+  }
   properties: {
     serverFarmId:             appServicePlan.id
     virtualNetworkSubnetId:   '${vnet.id}/subnets/${vnetIntegrationSubnetName}'
@@ -493,7 +513,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         storage: {
           type:  'blobContainer'
           value: '${storageFunc.properties.primaryEndpoints.blob}${deploymentContainerName}'
-          authentication: { type: 'SystemAssignedIdentity' }
+          authentication: { 
+            type: 'UserAssignedIdentity'
+            userAssignedIdentityResourceId: userAssignedIdentityId
+          }
         }
       }
       scaleAndConcurrency: {
@@ -529,6 +552,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'TARGET_DES_NAME_SUFFIX',                 value: '' }
         { name: 'TARGET_DES_RG_SUFFIX',                   value: '' }
         { name: 'TARGET_ASG_NAME_SUFFIX',                 value: '' }
+        { name: 'AZURE_CLIENT_ID',                        value: userAssignedIdentity.properties.clientId }
       ]
     }
   }
@@ -548,40 +572,40 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
 
 resource rbacFuncBlobOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageFunc
-  name:  guid(storageFunc.id, functionApp.id, storageBlobDataOwnerRoleId)
+  name:  guid(storageFunc.id, userAssignedIdentityId, storageBlobDataOwnerRoleId)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataOwnerRoleId)
-    principalId:      functionApp.identity.principalId
+    principalId:      userAssignedIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
 }
 
 resource rbacFuncBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageFunc
-  name:  guid(storageFunc.id, functionApp.id, storageBlobDataContributorRoleId)
+  name:  guid(storageFunc.id, userAssignedIdentityId, storageBlobDataContributorRoleId)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
-    principalId:      functionApp.identity.principalId
+    principalId:      userAssignedIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
 }
 
 resource rbacFuncQueue 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageFunc
-  name:  guid(storageFunc.id, functionApp.id, storageQueueDataContributorRoleId)
+  name:  guid(storageFunc.id, userAssignedIdentityId, storageQueueDataContributorRoleId)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
-    principalId:      functionApp.identity.principalId
+    principalId:      userAssignedIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
 }
 
 resource rbacFuncTable 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageFunc
-  name:  guid(storageFunc.id, functionApp.id, storageTableDataContributorRoleId)
+  name:  guid(storageFunc.id, userAssignedIdentityId, storageTableDataContributorRoleId)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageTableDataContributorRoleId)
-    principalId:      functionApp.identity.principalId
+    principalId:      userAssignedIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
 }
@@ -592,10 +616,10 @@ resource rbacFuncTable 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 resource rbacConfigBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storageConfig
-  name:  guid(storageConfig.id, functionApp.id, storageBlobDataContributorRoleId)
+  name:  guid(storageConfig.id, userAssignedIdentityId, storageBlobDataContributorRoleId)
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
-    principalId:      functionApp.identity.principalId
+    principalId:      userAssignedIdentity.properties.principalId
     principalType:    'ServicePrincipal'
   }
 }
@@ -608,7 +632,9 @@ resource rbacConfigBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-
 output AZURE_LOCATION                        string = location
 output AZURE_TENANT_ID                       string = tenant().tenantId
 output AZURE_FUNCTION_NAME                   string = functionApp.name
-output AZURE_FUNCTION_PRINCIPAL_ID           string = functionApp.identity.principalId
+output AZURE_FUNCTION_PRINCIPAL_ID           string = userAssignedIdentity.properties.principalId
+output AZURE_USER_ASSIGNED_IDENTITY_ID       string = userAssignedIdentityId
+output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = userAssignedIdentity.properties.clientId
 output AZURE_VNET_NAME                       string = vnet.name
 output AZURE_VNET_ID                         string = vnet.id
 output AZURE_STORAGE_FUNC_NAME               string = storageFunc.name
