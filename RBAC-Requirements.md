@@ -5,12 +5,12 @@ This document describes the **minimum Azure RBAC permissions** required for the 
 ## Overview
 
 The DR Replication Function uses a **system-assigned managed identity** to perform operations across two Azure subscriptions:
-- **Source Subscription** (Identity): Read-only access to source VMs and resources
-- **Target Subscription** (Identity-DR): Create and manage DR resources
+- **Source Subscription**: Read-only access to source VMs and resources
+- **Target Subscription**: Create and manage DR resources
 
 ---
 
-## 🎯 Target/Destination Subscription (identity-dr)
+## 🎯 Target/Destination Subscription
 
 The managed identity needs permissions to create and manage DR infrastructure in the target subscription.
 
@@ -24,11 +24,12 @@ The **simplest and recommended approach** is to assign **three built-in roles** 
 
 ```bash
 # Get the Function App's managed identity principal ID
-FUNCTION_APP_NAME="func-testdr-final"
-PRINCIPAL_ID=$(az functionapp identity show --name $FUNCTION_APP_NAME --resource-group rg-bolla-working --query principalId -o tsv)
+FUNCTION_APP_NAME="<YOUR_FUNCTION_APP_NAME>"
+FUNCTION_RESOURCE_GROUP="<YOUR_FUNCTION_RESOURCE_GROUP>"
+PRINCIPAL_ID=$(az functionapp identity show --name $FUNCTION_APP_NAME --resource-group $FUNCTION_RESOURCE_GROUP --query principalId -o tsv)
 
 # Target subscription
-TARGET_SUBSCRIPTION_ID="f255afb5-b435-497a-8def-92f104d8d92a"  # identity-dr
+TARGET_SUBSCRIPTION_ID="<YOUR_TARGET_SUBSCRIPTION_ID>"
 
 # Assign Virtual Machine Contributor role
 az role assignment create \
@@ -77,8 +78,8 @@ You must also grant **Storage Blob Data Contributor** to the **log storage accou
 
 ```bash
 # Log storage account (in target subscription)
-LOG_STORAGE_ACCOUNT_NAME="stlogdr123456"
-LOG_STORAGE_RESOURCE_GROUP="rg-bolla-dr-logs"
+LOG_STORAGE_ACCOUNT_NAME="<YOUR_LOG_STORAGE_ACCOUNT>"
+LOG_STORAGE_RESOURCE_GROUP="<YOUR_LOG_RESOURCE_GROUP>"
 
 # Get storage account resource ID
 STORAGE_ID=$(az storage account show \
@@ -131,7 +132,7 @@ If organizational policy requires **least privilege access** or you want to avoi
   ],
   "NotActions": [],
   "AssignableScopes": [
-    "/subscriptions/f255afb5-b435-497a-8def-92f104d8d92a"
+    "/subscriptions/<YOUR_TARGET_SUBSCRIPTION_ID>"
   ]
 }
 ```
@@ -159,14 +160,14 @@ az role assignment create \
 
 ---
 
-## 📖 Source Subscription (Identity)
+## 📖 Source Subscription
 
 The managed identity needs **read-only** access to source resources:
 
 ### Recommended: Reader Role
 
 ```bash
-SOURCE_SUBSCRIPTION_ID="bb410b24-2061-4149-87f6-2545ee91a84c"  # Identity
+SOURCE_SUBSCRIPTION_ID="<YOUR_SOURCE_SUBSCRIPTION_ID>"
 
 az role assignment create \
   --assignee $PRINCIPAL_ID \
@@ -248,15 +249,15 @@ az role assignment list \
 Connect-AzAccount -Identity
 
 # Test reading a disk encryption set
-$targetSub = "f255afb5-b435-497a-8def-92f104d8d92a"
+$targetSub = "<YOUR_TARGET_SUBSCRIPTION_ID>"
 Set-AzContext -SubscriptionId $targetSub
-Get-AzDiskEncryptionSet -ResourceGroupName "rg-bolla-dr-prod" -Name "des-target"
+Get-AzDiskEncryptionSet -ResourceGroupName "<YOUR_DES_RESOURCE_GROUP>" -Name "<YOUR_DES_NAME>"
 
 # Test reading VNet
-Get-AzVirtualNetwork -ResourceGroupName "rg-bolla-dr-network" -Name "vnet-dr"
+Get-AzVirtualNetwork -ResourceGroupName "<YOUR_VNET_RESOURCE_GROUP>" -Name "<YOUR_VNET_NAME>"
 
 # Test reading storage account (should work if Storage Blob Data Contributor assigned)
-$ctx = New-AzStorageContext -StorageAccountName "stlogdr123456" -UseConnectedAccount
+$ctx = New-AzStorageContext -StorageAccountName "<YOUR_LOG_STORAGE_ACCOUNT>" -UseConnectedAccount
 Get-AzStorageContainer -Context $ctx
 ```
 
@@ -298,13 +299,13 @@ Get-AzStorageContainer -Context $ctx
 
 ### ⭐ Recommended Minimal Setup
 
-1. **Target Subscription (identity-dr)**:
+1. **Target Subscription**:
    - Role: **Virtual Machine Contributor** (subscription or resource group scope)
    - Role: **Disk Snapshot Contributor** (subscription or resource group scope)
    - Role: **Network Reader** (subscription or resource group scope)
    - Role: **Storage Blob Data Contributor** (log storage account scope)
 
-2. **Source Subscription (Identity)**:
+2. **Source Subscription**:
    - Role: **Reader** (subscription scope)
 
 ### ⚠️ Important Notes
