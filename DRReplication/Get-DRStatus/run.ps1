@@ -103,12 +103,11 @@ try {
             $prefix       = "$vmName/"
             $encodedPrefix = [uri]::EscapeDataString($vmName) + '/'
             $listUri      = "https://$storageAccountName.blob.core.windows.net/${logContainerName}?restype=container&comp=list&prefix=$encodedPrefix"
-            Write-StatusLog "[DIAG] listUri=[$listUri] storageAccount=[$storageAccountName] logContainer=[$logContainerName]"
-            $listResponse = Invoke-RestMethod -Uri $listUri -Headers $storageHeaders -Method GET -ErrorAction Stop -StatusCodeVariable listStatus -SkipHttpErrorCheck
-            if ($listStatus -ne 200) {
-                throw "Storage list returned HTTP $listStatus for URI [$listUri]: $listResponse"
+            $listWebResp  = Invoke-WebRequest -Uri $listUri -Headers $storageHeaders -Method GET -SkipHttpErrorCheck -ErrorAction Stop
+            if ($listWebResp.StatusCode -ne 200) {
+                throw "Storage list returned HTTP $($listWebResp.StatusCode): $($listWebResp.Content)"
             }
-            $listXml = [xml]([string]$listResponse)
+            $listXml = [xml]$listWebResp.Content
             $blobs        = @($listXml.EnumerationResults.Blobs.Blob) | Where-Object { $_ } | ForEach-Object {
                 [pscustomobject]@{
                     Name         = $_.Name
@@ -234,16 +233,11 @@ try {
             }
         }
         catch {
-            $errDetail = $_.Exception.Message
-            try {
-                $errBody = $_.Exception.Response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-                if ($errBody) { $errDetail += " | Body: $errBody" }
-            } catch {}
-            Write-StatusLog "Error checking status for VM $vmName : $errDetail" 'ERROR'
+            Write-StatusLog "Error checking status for VM $vmName : $($_.Exception.Message)" 'ERROR'
             $results += @{
                 vmName = $vmName
                 status = 'ERROR'
-                message = $errDetail
+                message = $_.Exception.Message
             }
         }
     }
