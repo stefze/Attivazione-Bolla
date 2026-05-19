@@ -46,10 +46,6 @@ var deploymentContainerName = 'deploymentpackage'
 var csvContainerName        = 'dr-configs'
 var logContainerName        = 'dr-logs'
 
-var storageBlobDataOwnerRoleId        = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
-var storageBlobDataContributorRoleId  = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-var storageQueueDataContributorRoleId = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
-var storageTableDataContributorRoleId = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 
 // VNet and subnet names
 var vnetName                    = 'vnet-${prefix}-${resourceToken}'
@@ -58,9 +54,6 @@ var privateEndpointSubnetName   = 'snet-privateendpoints'
 
 // Private DNS Zone names
 var privateDnsZoneBlobName  = 'privatelink.blob.${environment().suffixes.storage}'
-var privateDnsZoneTableName = 'privatelink.table.${environment().suffixes.storage}'
-var privateDnsZoneQueueName = 'privatelink.queue.${environment().suffixes.storage}'
-var privateDnsZoneFileName  = 'privatelink.file.${environment().suffixes.storage}'
 
 // ---------------------------------------------------------------------------
 // Virtual Network
@@ -122,53 +115,6 @@ resource privateDnsZoneBlobVnetLink 'Microsoft.Network/privateDnsZones/virtualNe
   }
 }
 
-resource privateDnsZoneTable 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  name:     privateDnsZoneTableName
-  location: 'global'
-  tags:     tags
-}
-
-resource privateDnsZoneTableVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  parent:   privateDnsZoneTable
-  name:     '${vnetName}-link'
-  location: 'global'
-  properties: {
-    registrationEnabled: false
-    virtualNetwork:      { id: vnet.id }
-  }
-}
-
-resource privateDnsZoneQueue 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  name:     privateDnsZoneQueueName
-  location: 'global'
-  tags:     tags
-}
-
-resource privateDnsZoneQueueVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  parent:   privateDnsZoneQueue
-  name:     '${vnetName}-link'
-  location: 'global'
-  properties: {
-    registrationEnabled: false
-    virtualNetwork:      { id: vnet.id }
-  }
-}
-
-resource privateDnsZoneFile 'Microsoft.Network/privateDnsZones@2020-06-01' = {
-  name:     privateDnsZoneFileName
-  location: 'global'
-  tags:     tags
-}
-
-resource privateDnsZoneFileVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  parent:   privateDnsZoneFile
-  name:     '${vnetName}-link'
-  location: 'global'
-  properties: {
-    registrationEnabled: false
-    virtualNetwork:      { id: vnet.id }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Log Analytics
@@ -318,110 +264,6 @@ resource privateEndpointFuncBlobDnsZoneGroup 'Microsoft.Network/privateEndpoints
   }
 }
 
-resource privateEndpointFuncTable 'Microsoft.Network/privateEndpoints@2023-11-01' = {
-  name:     'pe-${storageFuncName}-table'
-  location: location
-  tags:     tags
-  properties: {
-    subnet: {
-      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-connection'
-        properties: {
-          privateLinkServiceId: storageFunc.id
-          groupIds:             [ 'table' ]
-        }
-      }
-    ]
-  }
-}
-
-resource privateEndpointFuncTableDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
-  parent: privateEndpointFuncTable
-  name:   'dnsgroupname'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name:              'config'
-        properties: {
-          privateDnsZoneId: privateDnsZoneTable.id
-        }
-      }
-    ]
-  }
-}
-
-resource privateEndpointFuncQueue 'Microsoft.Network/privateEndpoints@2023-11-01' = {
-  name:     'pe-${storageFuncName}-queue'
-  location: location
-  tags:     tags
-  properties: {
-    subnet: {
-      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-connection'
-        properties: {
-          privateLinkServiceId: storageFunc.id
-          groupIds:             [ 'queue' ]
-        }
-      }
-    ]
-  }
-}
-
-resource privateEndpointFuncQueueDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
-  parent: privateEndpointFuncQueue
-  name:   'dnsgroupname'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name:              'config'
-        properties: {
-          privateDnsZoneId: privateDnsZoneQueue.id
-        }
-      }
-    ]
-  }
-}
-
-resource privateEndpointFuncFile 'Microsoft.Network/privateEndpoints@2023-11-01' = {
-  name:     'pe-${storageFuncName}-file'
-  location: location
-  tags:     tags
-  properties: {
-    subnet: {
-      id: '${vnet.id}/subnets/${privateEndpointSubnetName}'
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'pe-connection'
-        properties: {
-          privateLinkServiceId: storageFunc.id
-          groupIds:             [ 'file' ]
-        }
-      }
-    ]
-  }
-}
-
-resource privateEndpointFuncFileDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-11-01' = {
-  parent: privateEndpointFuncFile
-  name:   'dnsgroupname'
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name:              'config'
-        properties: {
-          privateDnsZoneId: privateDnsZoneFile.id
-        }
-      }
-    ]
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Private Endpoints — Config Storage
@@ -533,8 +375,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       appSettings: [
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING',  value: appInsights.properties.ConnectionString }
         { name: 'AzureWebJobsStorage__blobServiceUri',    value: storageFunc.properties.primaryEndpoints.blob }
-        { name: 'AzureWebJobsStorage__queueServiceUri',   value: storageFunc.properties.primaryEndpoints.queue }
-        { name: 'AzureWebJobsStorage__tableServiceUri',   value: storageFunc.properties.primaryEndpoints.table }
         { name: 'AzureWebJobsStorage__credential',        value: 'managedidentity' }
         { name: 'AzureWebJobsStorage__clientId',          value: userAssignedIdentity.properties.clientId }
         { name: 'CSV_STORAGE_CONNECTION__blobServiceUri', value: storageConfig.properties.primaryEndpoints.blob }
@@ -560,69 +400,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   dependsOn: [
     deploymentContainer
     privateEndpointFuncBlob
-    privateEndpointFuncTable
-    privateEndpointFuncQueue
-    privateEndpointFuncFile
     privateEndpointConfigBlob
   ]
-}
-
-// ---------------------------------------------------------------------------
-// RBAC — function hosting storage
-// ---------------------------------------------------------------------------
-
-resource rbacFuncBlobOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageFunc
-  name:  guid(storageFunc.id, userAssignedIdentityId, storageBlobDataOwnerRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataOwnerRoleId)
-    principalId:      userAssignedIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
-
-resource rbacFuncBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageFunc
-  name:  guid(storageFunc.id, userAssignedIdentityId, storageBlobDataContributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
-    principalId:      userAssignedIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
-
-resource rbacFuncQueue 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageFunc
-  name:  guid(storageFunc.id, userAssignedIdentityId, storageQueueDataContributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageQueueDataContributorRoleId)
-    principalId:      userAssignedIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
-
-resource rbacFuncTable 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageFunc
-  name:  guid(storageFunc.id, userAssignedIdentityId, storageTableDataContributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageTableDataContributorRoleId)
-    principalId:      userAssignedIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
-}
-
-// ---------------------------------------------------------------------------
-// RBAC — CSV config storage (read CSV + write logs)
-// ---------------------------------------------------------------------------
-
-resource rbacConfigBlobContrib 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: storageConfig
-  name:  guid(storageConfig.id, userAssignedIdentityId, storageBlobDataContributorRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', storageBlobDataContributorRoleId)
-    principalId:      userAssignedIdentity.properties.principalId
-    principalType:    'ServicePrincipal'
-  }
 }
 
 // ---------------------------------------------------------------------------
