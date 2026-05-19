@@ -107,7 +107,11 @@ try {
             if ($listWebResp.StatusCode -ne 200) {
                 throw "Storage list returned HTTP $($listWebResp.StatusCode): $($listWebResp.Content)"
             }
-            $listXml = [xml]$listWebResp.Content
+            # [xml]$string fails when the declaration has encoding="utf-8" (string is Unicode internally).
+            # Load via MemoryStream so the parser sees UTF-8 bytes matching the encoding declaration.
+            $listXml = New-Object System.Xml.XmlDocument
+            $xmlStream = [System.IO.MemoryStream]::new([System.Text.Encoding]::UTF8.GetBytes($listWebResp.Content))
+            try { $listXml.Load($xmlStream) } finally { $xmlStream.Dispose() }
             $blobs        = @($listXml.EnumerationResults.Blobs.Blob) | Where-Object { $_ } | ForEach-Object {
                 [pscustomobject]@{
                     Name         = $_.Name
