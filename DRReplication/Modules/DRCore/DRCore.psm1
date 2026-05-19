@@ -745,6 +745,9 @@ function Invoke-VMReplication {
             throw "Stage D context mismatch! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
         }
 
+        # Initialize target VM resource group (create if doesn't exist)
+        Initialize-ResourceGroup -Name $targetVmRg -Location $targetLocation | Out-Null
+
         $targetVnet = Invoke-WithRetry -Operation "Get-AzVirtualNetwork $targetVnetName" -ScriptBlock {
             Get-AzVirtualNetwork -ResourceGroupName $targetVnetRg -Name $targetVnetName -ErrorAction Stop
         }
