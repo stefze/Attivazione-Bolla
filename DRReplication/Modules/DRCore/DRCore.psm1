@@ -56,7 +56,7 @@ function Invoke-WithRetry {
             return & $ScriptBlock
         }
         catch {
-            $retryable = $_.Exception.Message -match '429|TooManyRequests|temporar|timeout|throttl|InternalServerError|Conflict|Gateway|BadRequest'
+            $retryable = $_.Exception.Message -match '429|TooManyRequests|temporar|timeout|throttl|InternalServerError|Conflict|Gateway|BadRequest|subscription|context|authorization'
             if ($attempt -ge $MaxAttempts -or -not $retryable) {
                 throw "Operation '$Operation' failed after $attempt attempt(s). Error: $($_.Exception.Message)"
             }
@@ -583,7 +583,7 @@ function Invoke-VMReplication {
                     $attempt++
                     try { return & $sb }
                     catch {
-                        $retryable = $_.Exception.Message -match '429|TooManyRequests|temporar|timeout|throttl|InternalServerError|Conflict|Gateway|BadRequest'
+                        $retryable = $_.Exception.Message -match '429|TooManyRequests|temporar|timeout|throttl|InternalServerError|Conflict|Gateway|BadRequest|subscription|context|authorization'
                         if ($attempt -ge 5 -or -not $retryable) {
                             throw "[$op] failed after $attempt attempt(s): $($_.Exception.Message)"
                         }
@@ -605,14 +605,19 @@ function Invoke-VMReplication {
             Import-Module Az.Compute  -ErrorAction Stop
             if ($env:MSI_SECRET -or $env:IDENTITY_ENDPOINT) {
                 Disable-AzContextAutosave -Scope Process | Out-Null
-                Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                _retry -op "Connect-AzAccount with managed identity" -sb {
+                    Connect-AzAccount -Identity -ErrorAction Stop | Out-Null
+                }
             }
             
-            # Set and verify target subscription context
-            $null = Set-AzContext -SubscriptionId $tSubId -Scope Process -ErrorAction Stop
-            $currentContext = Get-AzContext
-            if ($currentContext.Subscription.Id -ne $tSubId) {
-                throw "Failed to switch to target subscription. Expected: $tSubId, Current: $($currentContext.Subscription.Id)"
+            # Set and verify target subscription context with retry
+            _retry -op "Set-AzContext to $tSubId" -sb {
+                $null = Set-AzContext -SubscriptionId $tSubId -Scope Process -ErrorAction Stop
+                # Verify context immediately after setting
+                $currentContext = Get-AzContext
+                if ($currentContext.Subscription.Id -ne $tSubId) {
+                    throw "Failed to switch to target subscription. Expected: $tSubId, Current: $($currentContext.Subscription.Id)"
+                }
             }
 
             $snapName = "$snapPrefix$($disk.Name)"
