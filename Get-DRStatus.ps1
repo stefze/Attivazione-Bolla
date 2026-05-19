@@ -122,7 +122,7 @@ function Show-DRStatus {
         if ($succeeded -and $succeeded.Count -gt 0) {
             Write-Host "✓ Succeeded VMs:" -ForegroundColor Green
             foreach ($vm in $succeeded) {
-                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                $detail = if ($vm.completedStage) { $vm.completedStage } elseif ($vm.message) { $vm.message } else { "All stages completed" }
                 Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Green
             }
             Write-Host ""
@@ -131,7 +131,7 @@ function Show-DRStatus {
         if ($failed -and $failed.Count -gt 0) {
             Write-Host "✗ Failed VMs:" -ForegroundColor Red
             foreach ($vm in $failed) {
-                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                $detail = if ($vm.failedStage) { "Failed at: $($vm.failedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
                 Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Red
             }
             Write-Host ""
@@ -140,7 +140,7 @@ function Show-DRStatus {
         if ($inProgress -and $inProgress.Count -gt 0) {
             Write-Host "⟳ VMs In Progress:" -ForegroundColor Yellow
             foreach ($vm in $inProgress) {
-                $detail = if ($vm.completedStage) { "Stage: $($vm.completedStage)" } elseif ($vm.message) { $vm.message } else { "No details" }
+                $detail = if ($vm.lastCompletedStage) { "Last completed: $($vm.lastCompletedStage)" } elseif ($vm.message) { $vm.message } else { "Starting..." }
                 Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor Yellow
             }
             Write-Host ""
@@ -158,7 +158,7 @@ function Show-DRStatus {
         if ($unknown -and $unknown.Count -gt 0) {
             Write-Host "? Unknown Status:" -ForegroundColor DarkGray
             foreach ($vm in $unknown) {
-                $detail = if ($vm.message) { $vm.message } elseif ($vm.completedStage) { "Stage: $($vm.completedStage)" } else { "No information available" }
+                $detail = if ($vm.message) { $vm.message } else { "No information available" }
                 Write-Host "  • $($vm.vmName) - $detail" -ForegroundColor DarkGray
             }
             Write-Host ""
