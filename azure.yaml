@@ -7,6 +7,15 @@ name: bolla-dr-replication
 # Function code is deployed via the postprovision hook using az functionapp deployment.
 
 hooks:
+  preprovision:
+    shell: pwsh
+    run: |
+      if (-not $env:USER_ASSIGNED_IDENTITY_ID) {
+        $id = Read-Host "Enter the Resource ID of the pre-existing user-assigned managed identity`n(format: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ManagedIdentity/userAssignedIdentities/<name>)"
+        if (-not $id) { Write-Error "USER_ASSIGNED_IDENTITY_ID is required."; exit 1 }
+        azd env set USER_ASSIGNED_IDENTITY_ID $id
+      }
+
   postprovision:
     shell: pwsh
     run: |
