@@ -555,15 +555,16 @@ function Invoke-VMReplication {
         Write-Log 'Stage B: Creating/reusing encrypted snapshots in target subscription.' -VmName $SourceVmName
         Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
 
-        $targetVmRgObj  = Get-AzResourceGroup -Name $targetVmRg -ErrorAction Stop
-        $targetLocation = $targetVmRgObj.Location
-
-        Initialize-ResourceGroup -Name $targetSnapDiskRg -Location $targetLocation | Out-Null
-
+        # Get DES first (must exist) to determine target location
         $des = Invoke-WithRetry -Operation "Get-AzDiskEncryptionSet $targetDesName" -ScriptBlock {
             Get-AzDiskEncryptionSet -ResourceGroupName $targetDesRg -Name $targetDesName -ErrorAction Stop
         }
         if ($null -eq $des) { throw "Target DES '$targetDesName' not found in RG '$targetDesRg'." }
+        
+        $targetLocation = $des.Location
+        Write-Log "Target location: $targetLocation (from DES)" -VmName $SourceVmName
+
+        Initialize-ResourceGroup -Name $targetSnapDiskRg -Location $targetLocation | Out-Null
 
         # Parallel snapshot creation — each iteration runs in its own runspace
         $snapshotResults = $diskInfos | ForEach-Object -ThrottleLimit $DiskParallelThrottle -Parallel {
