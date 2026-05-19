@@ -774,6 +774,15 @@ function Invoke-VMReplication {
         $srcPrivateIp  = [string]$sourceIpConfig.PrivateIpAddress
         $srcIpCfgName  = [string]$sourceIpConfig.Name
 
+        # Re-establish target subscription context before ASG lookup
+        Write-Log "Re-establishing target subscription context before ASG and NIC operations." -VmName $SourceVmName
+        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
+        $currentCtx = Get-AzContext
+        Write-Log "Context before ASG/NIC operations verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
+        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
+            throw "Context mismatch before ASG/NIC operations! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
+        }
+
         # ── Resolve target Application Security Groups (VNet RG, no auto-create) ──
         $targetAsgIds = @()
         if ($srcAsgIds.Count -gt 0) {
@@ -786,19 +795,10 @@ function Invoke-VMReplication {
                 if ($null -eq $tAsg) {
                     Write-Log "  WARNING: Target ASG '$tAsgName' not found in RG '$tAsgRg'. ASG must be pre-created. NIC will be created without this ASG binding." 'WARN' -VmName $SourceVmName
                 } else {
-                    Write-Log "  Found target ASG '$tAsgName' in RG '$tAsgRg'." -VmName $SourceVmName
+                    Write-Log "  Found target ASG '$tAsgName' in RG '$tAsgRg'. ID: $($tAsg.Id)" -VmName $SourceVmName
                     $targetAsgIds += [string]$tAsg.Id
                 }
             }
-        }
-
-        # Re-establish target subscription context before NIC creation
-        Write-Log "Re-establishing target subscription context before NIC creation." -VmName $SourceVmName
-        Set-SubscriptionContext -SubscriptionId $targetSub.Id -FriendlyName $targetSub.Name
-        $currentCtx = Get-AzContext
-        Write-Log "Context before NIC creation verified: $($currentCtx.Subscription.Name) ($($currentCtx.Subscription.Id))" -VmName $SourceVmName
-        if ($currentCtx.Subscription.Id -ne $targetSub.Id) {
-            throw "Context mismatch before NIC creation! Expected: $($targetSub.Id), Current: $($currentCtx.Subscription.Id)"
         }
 
         # NIC
