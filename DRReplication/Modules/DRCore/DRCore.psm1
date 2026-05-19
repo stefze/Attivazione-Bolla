@@ -169,17 +169,17 @@ function Upload-StageLog {
         $timestamp  = Get-Date -Format 'yyyyMMdd-HHmm'
         $failSuffix = if ($Failed) { '-failed' } else { '' }
         $logBlobName = "$VmName/$InvocationId-stage$StageId-$StageDescription-$timestamp$failSuffix.log"
-        $tmpLog = [System.IO.Path]::GetTempFileName()
-        try {
-            $logCtx = New-AzStorageContext -StorageAccountName $LogStorageAccountName -UseConnectedAccount -ErrorAction Stop
-            [System.IO.File]::WriteAllText($tmpLog, $logContent, [System.Text.Encoding]::UTF8)
-            Set-AzStorageBlobContent -Context $logCtx -Container $LogContainerName `
-                -File $tmpLog -Blob $logBlobName -Force -ErrorAction Stop | Out-Null
-            Write-Log "Stage $StageId log uploaded: $logBlobName" -VmName $VmName
+        # Get OAuth token explicitly — Az.Storage -UseConnectedAccount uses DefaultAzureCredential
+        # internally and does not pass the UAMI client_id; Get-AzAccessToken uses Az.Accounts directly.
+        $logToken   = (Get-AzAccessToken -ResourceUrl "https://storage.azure.com/" -ErrorAction Stop).Token
+        $logHeaders = @{
+            'Authorization'  = "Bearer $logToken"
+            'x-ms-version'   = '2023-11-03'
+            'x-ms-blob-type' = 'BlockBlob'
         }
-        finally {
-            Remove-Item $tmpLog -Force -ErrorAction SilentlyContinue
-        }
+        $uploadUri  = "https://$LogStorageAccountName.blob.core.windows.net/$LogContainerName/$([uri]::EscapeDataString($logBlobName))"
+        Invoke-RestMethod -Uri $uploadUri -Headers $logHeaders -Method PUT -Body $logContent -ContentType 'text/plain; charset=utf-8' -ErrorAction Stop | Out-Null
+        Write-Log "Stage $StageId log uploaded: $logBlobName" -VmName $VmName
     }
     catch {
         Write-Log "Failed to upload stage $StageId log: $($_.Exception.Message)" 'WARN' -VmName $VmName

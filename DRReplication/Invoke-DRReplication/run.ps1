@@ -101,11 +101,14 @@ try {
 
     Write-FuncLog "Downloading CSV '$csvBlobPath' from storage account '$storageAccountName', container '$containerName'."
 
-    $storageCtx = New-AzStorageContext -StorageAccountName $storageAccountName -UseConnectedAccount -ErrorAction Stop
-    $tempFile   = [System.IO.Path]::GetTempFileName()
+    # Get OAuth token explicitly — Az.Storage -UseConnectedAccount uses DefaultAzureCredential
+    # internally and does not pass the UAMI client_id; Get-AzAccessToken uses Az.Accounts directly.
+    $storageToken   = (Get-AzAccessToken -ResourceUrl "https://storage.azure.com/" -ErrorAction Stop).Token
+    $storageHeaders = @{ 'Authorization' = "Bearer $storageToken"; 'x-ms-version' = '2023-11-03' }
+    $tempFile       = [System.IO.Path]::GetTempFileName()
     try {
-        Get-AzStorageBlobContent -Context $storageCtx -Container $containerName -Blob $csvBlobPath `
-            -Destination $tempFile -Force -ErrorAction Stop | Out-Null
+        $csvBlobUri = "https://$storageAccountName.blob.core.windows.net/$containerName/$([uri]::EscapeDataString($csvBlobPath))"
+        Invoke-RestMethod -Uri $csvBlobUri -Headers $storageHeaders -Method GET -OutFile $tempFile -ErrorAction Stop
         $csvContent = Get-Content -Path $tempFile -Raw -Encoding utf8 -ErrorAction Stop
     }
     finally {

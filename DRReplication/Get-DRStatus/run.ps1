@@ -69,17 +69,22 @@ try {
     $storageAccountName = ([uri]$csvStorageUri).Host -replace '\.blob\.core\.windows\.net$', ''
     Write-StatusLog "Storage account: $storageAccountName, Container: $csvContainerName"
 
+    # Get OAuth token explicitly — Az.Storage -UseConnectedAccount uses DefaultAzureCredential
+    # internally and does not pass the UAMI client_id to MSI endpoint; Get-AzAccessToken uses
+    # Az.Accounts directly and correctly handles user-assigned managed identity.
+    $storageToken   = (Get-AzAccessToken -ResourceUrl "https://storage.azure.com/" -ErrorAction Stop).Token
+    $storageHeaders = @{ 'Authorization' = "Bearer $storageToken"; 'x-ms-version' = '2023-11-03' }
+    Write-StatusLog "Storage OAuth token acquired."
+
     # Download CSV
     Write-StatusLog "Downloading CSV: $csvBlobPath from container $csvContainerName"
-    
-    $ctx = New-AzStorageContext -StorageAccountName $storageAccountName -UseConnectedAccount -ErrorAction Stop
-    
+
     # Use /tmp on Linux (Azure Functions), fallback to TEMP on Windows
     $tempDir = if (Test-Path '/tmp') { '/tmp' } else { $env:TEMP }
     $tempCsvFile = [System.IO.Path]::Combine($tempDir, "status-check-$([guid]::NewGuid()).csv")
-    
-    Get-AzStorageBlobContent -Container $csvContainerName -Blob $csvBlobPath `
-        -Destination $tempCsvFile -Context $ctx -Force -ErrorAction Stop | Out-Null
+
+    $csvDownloadUri = "https://$storageAccountName.blob.core.windows.net/$csvContainerName/$([uri]::EscapeDataString($csvBlobPath))"
+    Invoke-RestMethod -Uri $csvDownloadUri -Headers $storageHeaders -Method GET -OutFile $tempCsvFile -ErrorAction Stop
     
     # Parse CSV
     $vmList = Import-Csv -Path $tempCsvFile -ErrorAction Stop
@@ -95,8 +100,16 @@ try {
         
         try {
             # List all log blobs for this VM
-            $prefix = "$vmName/"
-            $blobs = Get-AzStorageBlob -Container $logContainerName -Prefix $prefix -Context $ctx -ErrorAction Stop
+            $prefix       = "$vmName/"
+            $encodedPrefix = [uri]::EscapeDataString($prefix)
+            $listUri      = "https://$storageAccountName.blob.core.windows.net/$logContainerName?restype=container&comp=list&prefix=$encodedPrefix"
+            $listXml      = [xml](Invoke-RestMethod -Uri $listUri -Headers $storageHeaders -Method GET -ErrorAction Stop)
+            $blobs        = @($listXml.EnumerationResults.Blobs.Blob) | Where-Object { $_ } | ForEach-Object {
+                [pscustomobject]@{
+                    Name         = $_.Name
+                    LastModified = [DateTimeOffset]::Parse($_.Properties.'Last-Modified', [System.Globalization.CultureInfo]::InvariantCulture)
+                }
+            }
             
             if ($blobs.Count -eq 0) {
                 Write-StatusLog "No logs found for VM: $vmName" 'WARN'
