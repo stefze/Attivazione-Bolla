@@ -107,7 +107,7 @@ try {
     $storageHeaders = @{ 'Authorization' = "Bearer $storageToken"; 'x-ms-version' = '2023-11-03' }
     $tempFile       = [System.IO.Path]::GetTempFileName()
     try {
-        $csvBlobUri = "https://$storageAccountName.blob.core.windows.net/$containerName/$([uri]::EscapeDataString($csvBlobPath))"
+        $csvBlobUri = "https://$storageAccountName.blob.core.windows.net/$containerName/" + (($csvBlobPath -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
         Invoke-RestMethod -Uri $csvBlobUri -Headers $storageHeaders -Method GET -OutFile $tempFile -ErrorAction Stop
         $csvContent = Get-Content -Path $tempFile -Raw -Encoding utf8 -ErrorAction Stop
     }

@@ -177,7 +177,8 @@ function Upload-StageLog {
             'x-ms-version'   = '2023-11-03'
             'x-ms-blob-type' = 'BlockBlob'
         }
-        $uploadUri  = "https://$LogStorageAccountName.blob.core.windows.net/$LogContainerName/$([uri]::EscapeDataString($logBlobName))"
+        $encodedBlobName = (($logBlobName -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
+        $uploadUri  = "https://$LogStorageAccountName.blob.core.windows.net/$LogContainerName/$encodedBlobName"
         Invoke-RestMethod -Uri $uploadUri -Headers $logHeaders -Method PUT -Body $logContent -ContentType 'text/plain; charset=utf-8' -ErrorAction Stop | Out-Null
         Write-Log "Stage $StageId log uploaded: $logBlobName" -VmName $VmName
     }

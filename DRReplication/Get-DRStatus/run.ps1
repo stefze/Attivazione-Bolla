@@ -83,7 +83,7 @@ try {
     $tempDir = if (Test-Path '/tmp') { '/tmp' } else { $env:TEMP }
     $tempCsvFile = [System.IO.Path]::Combine($tempDir, "status-check-$([guid]::NewGuid()).csv")
 
-    $csvDownloadUri = "https://$storageAccountName.blob.core.windows.net/$csvContainerName/$([uri]::EscapeDataString($csvBlobPath))"
+    $csvDownloadUri = "https://$storageAccountName.blob.core.windows.net/$csvContainerName/" + (($csvBlobPath -split '/') | ForEach-Object { [uri]::EscapeDataString($_) }) -join '/'
     Invoke-RestMethod -Uri $csvDownloadUri -Headers $storageHeaders -Method GET -OutFile $tempCsvFile -ErrorAction Stop
     
     # Parse CSV
@@ -101,7 +101,7 @@ try {
         try {
             # List all log blobs for this VM
             $prefix       = "$vmName/"
-            $encodedPrefix = [uri]::EscapeDataString($prefix)
+            $encodedPrefix = [uri]::EscapeDataString($vmName) + '/'
             $listUri      = "https://$storageAccountName.blob.core.windows.net/$logContainerName?restype=container&comp=list&prefix=$encodedPrefix"
             $listXml      = [xml](Invoke-RestMethod -Uri $listUri -Headers $storageHeaders -Method GET -ErrorAction Stop)
             $blobs        = @($listXml.EnumerationResults.Blobs.Blob) | Where-Object { $_ } | ForEach-Object {
