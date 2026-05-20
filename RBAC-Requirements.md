@@ -21,7 +21,22 @@ PRINCIPAL_ID=$(az identity show \
 
 > **Note**: RBAC role assignments are **not** created by the Bicep template. All assignments must be created manually before the first run.
 
-## 🎯 Target/Destination Subscription
+---
+
+## 🔐 Deployer Permissions
+
+Different phases of the deployment require different roles on the person (or service principal) doing the deploying:
+
+| Phase | What happens | Required role |
+|-------|-------------|---------------|
+| **Create UAMI** (`mi-bolla`) | `az identity create` | **Contributor** on the resource group where the UAMI lives |
+| **Bicep / `azd provision`** | Creates VNet, storage, Function App, private endpoints | **Contributor** on the function app resource group |
+| **Code deploy** (`func azure functionapp publish`) | Uploads function zip to FC1 blob storage | **Contributor** on the function app resource group |
+| **Manual RBAC grants** (this document) | `az role assignment create` on source sub, target sub, function RG | **Owner** or **User Access Administrator** on each scope |
+
+> **The Bicep template creates no role assignments.** It only references the UAMI as an `existing` resource. A plain **Contributor** on the resource group is sufficient to run `azd provision`. Owner or UAA is only needed for the separate manual RBAC grant step.
+
+
 
 The managed identity needs permissions to create and manage DR infrastructure in the target subscription.
 
